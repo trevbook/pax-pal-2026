@@ -1,0 +1,20 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+.DS_Store
+.sst/
+sst-env.d.ts
+.next/
+*.tsbuildinfo
+
+# Ignore the open-next files
+.open-next/
+
+# Ignore my miscellaneous files, but keep certain things
+miscellaneous/*
+!miscellaneous/python/
+!miscellaneous/docs/
+
