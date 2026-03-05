@@ -89,9 +89,11 @@ All constants use `as const` arrays with derived types. The full set:
 
 ---
 
-## Stage 2: Data Pipeline (`packages/data-pipeline`)
+## Stage 2: Data Pipeline (`packages/data-pipeline`) — SCRAPE & HARMONIZE COMPLETE
 
 **Time estimate: 2-3 days (biggest chunk of Phase 1)**
+
+> **Status**: Steps 2.0–2.2 complete (scaffold, scrape, harmonize). Steps 2.3–2.7 (enrich, classify, embed, load, testing beyond scrape/harmonize) remain.
 
 ### 2.0 Scaffold `packages/data-pipeline`
 
@@ -121,12 +123,17 @@ packages/data-pipeline/
     └── cli.ts            # Entry point: bun run src/cli.ts [stage]
 ```
 
-Dependencies to add:
+Dependencies installed (Phase 1):
 
 - `cheerio` — HTML parsing
+- `@pax-pal/core` — shared types
+
+Dependencies deferred (for later stages):
+
 - `@google/generative-ai` — Gemini API (embeddings + classification + enrichment)
 - `@aws-sdk/client-dynamodb` + `@aws-sdk/lib-dynamodb` — DynamoDB writes
-- `@pax-pal/core` — shared types
+
+**Deviation from plan**: The `scrape/tabletop.ts` file was not created as a separate module. Since the tabletop page shares the exact same HTML structure as the main exhibitors page (both use `div.exhibitor-entry[data-id]` with identical inner markup), a single `parseExhibitorPage(html, source)` function handles both. The `source` parameter (`"exhibitors" | "tabletop"`) disambiguates provenance. This avoids code duplication.
 
 ### 2.1 Scrape Stage
 
@@ -164,6 +171,20 @@ Implementation notes:
 - Support both local file paths and URLs as input (for re-running against live site)
 - Store raw parsed output as JSON with `lastScrapedAt` timestamps
 
+> **Implemented in**: `packages/data-pipeline/src/scrape/`
+>
+> **Results** (from local sample HTML, March 3 snapshot):
+> - Exhibitors: **345** entries parsed
+> - Demos: **109** entries parsed
+> - Tabletop: **42** entries parsed
+>
+> **HTML structure findings**:
+> - **Exhibitors**: Outer `div.exhibitor-entry[data-id]` with `data-exhib-full-name`, `data-is-featured`. Tags encoded as CSS classes (`tag-Action`, `cat-Tabletop`). Booth in `.exhibitor-location`. Image in `.gtImageArea img`. Showroom link on `a.gtExhibitorLink`. Description in `.exhibitor-description` (truncated with `…` link).
+> - **Demos**: Outer `div.gt-entry[data-id]` with inner `a.artist-modal-link` carrying `data-button-text` (game name), `data-exhib-full-name` (exhibitor), and `data-exhibitor-id` (key for harmonization). Image via `background-image` CSS on `.gtSpecial-image`. No inline description in list view.
+> - **Tabletop**: Identical structure to exhibitors. Showroom links point to `/tabletop-expo-hall/showroom.html` instead of `/expo-hall/showroom.html`. All entries carry `cat-Tabletop` class.
+>
+> **Key discovery**: The `data-exhibitor-id` on demos directly maps to exhibitor `data-id`, making exact-match harmonization possible (no fuzzy matching needed).
+
 ### 2.2 Harmonize Stage
 
 **Input**: The three JSON files from scrape
@@ -183,6 +204,25 @@ Merge the three sources into a unified list of `HarmonizedGame` objects:
 6. **Flag unmatched** demos (no exhibitor match) for manual review → `miscellaneous/data/02-harmonized/unmatched.json`
 
 Key consideration: the harmonization step assigns a stable `id` (the PAX `data-id`) that becomes the primary key throughout the system. Every downstream step references this ID.
+
+> **Implemented in**: `packages/data-pipeline/src/harmonize/harmonize.ts`
+>
+> **Results**:
+> - **346 games** harmonized (345 exhibitors + 1 tabletop-only entry not in main exhibitor list)
+> - **0 unmatched demos** — every demo matched to its exhibitor via `data-exhibitor-id`. Fuzzy matching was planned but turned out unnecessary.
+> - **Type breakdown**: 217 video games, 125 tabletop, 4 both
+> - **59 games** have associated demo entries
+> - **7 featured** exhibitors
+>
+> **Algorithm**:
+> 1. Seed from exhibitors (one `HarmonizedGame` per entry, keyed by `data-id`)
+> 2. Merge tabletop entries by ID — adds `"tabletop"` to `sourcePages`, merges tags, updates type
+> 3. Match demos via `exhibitorId` — sets `demoId`, adds `"demos"` to `sourcePages`, fills missing image/description
+> 4. Type resolution: tabletop signal + demo signal → `"both"`, tabletop signal only → `"tabletop"`, else `"video_game"`
+>
+> **Deviation**: Step 5 ("Deduplicate by data-id") was unnecessary — the Map-based approach inherently deduplicates. Step 3 from the plan ("Merge tabletop entries by data-id → set type both") was refined: tabletop entries that *also* have demos get `"both"`, but most tabletop-only entries correctly get `"tabletop"`.
+>
+> **Tabletop type detection**: Games are classified as tabletop based on two signals: (1) presence on the tabletop page, or (2) having the `Tabletop` CSS class tag. This catches the 42 tabletop-page entries plus an additional ~83 exhibitors from the main page that carry tabletop tags (e.g., `tag-Tabletop`, `cat-Tabletop`).
 
 ### 2.3 Enrich Stage
 
@@ -283,6 +323,12 @@ Write tests for the pure-logic parts:
 - `scrape/*.test.ts` — parse a known HTML snippet, assert correct field extraction
 - `harmonize/harmonize.test.ts` — given known exhibitors + demos, assert correct merging and type assignment
 - Enrich/classify/embed are harder to unit test (external API calls) — consider snapshot tests with mocked responses
+
+> **Status**: 25 tests passing across 3 test files.
+>
+> - `scrape/exhibitors.test.ts` — 10 tests: field extraction (id, name, slug, booth, description, image, showroom URL, featured status, PAX tags, timestamps) from synthetic HTML
+> - `scrape/demos.test.ts` — 7 tests: demo parsing (id, game name, exhibitor name/id, background-image extraction, timestamps)
+> - `harmonize/harmonize.test.ts` — 8 tests: exhibitor-to-game conversion, demo matching via exhibitorId, unmatched demo reporting, tabletop merging, `"both"` type resolution, tabletop-only entries, image fallback from demos
 
 ---
 
