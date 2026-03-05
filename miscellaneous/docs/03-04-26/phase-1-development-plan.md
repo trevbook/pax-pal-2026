@@ -21,7 +21,7 @@ packages/core           Scrape (cheerio)          DynamoDB tables      Game brow
 
 ---
 
-## Stage 1: Foundation (`packages/core`)
+## Stage 1: Foundation (`packages/core`) — COMPLETE
 
 **Time estimate: half a day**
 
@@ -37,46 +37,55 @@ packages/core/
 ├── package.json        # @pax-pal/core
 ├── tsconfig.json
 └── src/
-    ├── index.ts        # Re-exports everything
-    ├── game.ts         # Game type + schema
+    ├── index.ts        # Barrel re-exports (types, constants, utils)
+    ├── index.test.ts   # 15 smoke tests (taxonomy, slugs, type shapes)
+    ├── game.ts         # Game type + pipeline stage types
     ├── taxonomy.ts     # Tag/genre/mechanic constants
-    └── utils.ts        # Slug generation, shared helpers
+    └── utils.ts        # Slug generation (toSlug)
 ```
 
 ### 1.2 Define the Game type
 
-Based on the vision doc schema, but as a TypeScript interface. Key decisions:
+> **Implemented in**: `packages/core/src/game.ts`
 
-- Use a **discriminated union** or keep it flat? Flat is simpler and matches DynamoDB's structure. Go flat, with nullable video game / tabletop fields.
-- Export a `GameType` enum: `"video_game" | "tabletop" | "both"`
-- Export a `RawExhibitor` type for the scrape stage output (before harmonization)
-- Export a `RawDemo` type for demo scrape output
-- Export a `HarmonizedGame` type for post-harmonization (before enrichment)
-- Export the full `Game` type for the final enriched/loaded state
+Went with flat interfaces and nullable video game / tabletop fields as planned. Four staged types are exported:
 
-This staged approach lets each pipeline step have typed inputs and outputs.
+- `RawExhibitor` — scrape output for exhibitors + tabletop pages. Includes `sourcePage: "exhibitors" | "tabletop"` discriminator.
+- `RawDemo` — scrape output for demos. Carries `exhibitorId` for harmonization matching.
+- `HarmonizedGame` — post-merge, pre-enrichment. Adds `demoId` to track which demo entry was linked. Carries `sourcePages` array to track provenance.
+- `Game` — final enriched record. All fields from the vision doc schema, including `embedding: number[] | null`.
+
+`GameType` is a derived type (`"video_game" | "tabletop" | "both"`), not an enum — keeps it simple and avoids enum import issues.
 
 ### 1.3 Define taxonomy constants
 
-From the vision doc's "Unified Tag Set" section, create typed constant arrays:
+> **Implemented in**: `packages/core/src/taxonomy.ts`
 
-```typescript
-export const GAME_TYPES = ["video_game", "tabletop", "both"] as const;
-export const PLATFORMS = ["PC", "PlayStation", "Xbox", "Switch", "Mobile", "VR"] as const;
-export const VIDEO_GAME_GENRES = ["Action", "Adventure", ...] as const;
-export const TABLETOP_MECHANICS = ["Deck-Builder", "Dice", ...] as const;
-// etc.
-```
+All constants use `as const` arrays with derived types. The full set:
 
-These will be consumed by:
+| Constant | Count | Type |
+|---|---|---|
+| `GAME_TYPES` | 3 | `GameType` |
+| `PLATFORMS` | 6 | `Platform` |
+| `VIDEO_GAME_GENRES` | 14 | `VideoGameGenre` |
+| `TABLETOP_MECHANICS` | 7 | `TabletopMechanic` |
+| `AUDIENCE_TAGS` | 5 | `AudienceTag` |
+| `BUSINESS_TAGS` | 4 | `BusinessTag` |
+| `OTHER_TAGS` | 3 | `OtherTag` |
+| `ALL_TAGS` | 33 | `Tag` (union of all above) |
 
-- The LLM classification step (as the allowed values in structured output schemas)
-- The frontend filter UI (as filter options)
-- Validation logic
+**Deviation**: The vision doc listed "Co-op" in both `TABLETOP_MECHANICS` and `AUDIENCE_TAGS`. Since `ALL_TAGS` is a flat spread of all categories and must be duplicate-free, the tabletop mechanic was renamed to `"Co-op Play"`. The audience tag remains `"Co-op"`. The classify stage should map raw "co-op" signals to the appropriate one based on context (mechanic vs audience).
 
 ### 1.4 Validation
 
-After scaffold: `bun install`, `bun run typecheck`, `bun test` (add a basic smoke test for the exports).
+> **Status**: Passing — `bun run lint && bun run typecheck && bun test` all green.
+
+15 smoke tests in `packages/core/src/index.test.ts` cover:
+- Taxonomy constant values and no-duplicates invariant on `ALL_TAGS`
+- `toSlug()` edge cases (special chars, leading/trailing hyphens, empty string)
+- Type compatibility (constructing valid instances of all four pipeline types)
+
+**tsconfig note**: The child `tsconfig.json` must explicitly set `"exclude": ["node_modules", "dist"]` to override the root tsconfig's `"exclude": ["packages"]` — otherwise tsc sees no input files. This applies to all future workspace packages too.
 
 ---
 
