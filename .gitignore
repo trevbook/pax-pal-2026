@@ -17,6 +17,5 @@ sst-env.d.ts
 miscellaneous/*
 !miscellaneous/python/
 !miscellaneous/docs/
-!miscellaneous/html/
-!miscellaneous/data/
+
 
