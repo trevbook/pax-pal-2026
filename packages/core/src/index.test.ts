@@ -110,6 +110,8 @@ describe("type compatibility", () => {
       paxTags: [],
       sourcePages: ["exhibitors"],
       demoCount: 3,
+      exhibitorKind: null,
+      discoveredGameCount: 0,
       lastScrapedAt: new Date().toISOString(),
     };
     expect(exhibitor.demoCount).toBe(3);
@@ -144,6 +146,7 @@ describe("type compatibility", () => {
       paxTags: [],
       sourcePages: ["exhibitors", "demos"],
       demoId: "456",
+      discoverySource: null,
       lastScrapedAt: new Date().toISOString(),
     };
     expect(game.type).toBe("video_game");

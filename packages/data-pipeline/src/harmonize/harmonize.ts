@@ -124,6 +124,8 @@ function mergedToExhibitor(merged: MergedExhibitor, demoCount: number): Harmoniz
     paxTags,
     sourcePages: [...sourcePages],
     demoCount,
+    exhibitorKind: null,
+    discoveredGameCount: 0,
     lastScrapedAt: exhibitor.lastScrapedAt,
   };
 }
@@ -147,6 +149,7 @@ function demoToGame(demo: RawDemo, merged: MergedExhibitor): HarmonizedGame {
     paxTags,
     sourcePages: allSourcePages,
     demoId: demo.id,
+    discoverySource: null,
     lastScrapedAt:
       demo.lastScrapedAt > exhibitor.lastScrapedAt ? demo.lastScrapedAt : exhibitor.lastScrapedAt,
   };

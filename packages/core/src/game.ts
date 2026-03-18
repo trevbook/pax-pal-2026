@@ -1,6 +1,32 @@
 import type { GameType, Platform, TabletopMechanic, Tag, VideoGameGenre } from "./taxonomy";
 
 // ---------------------------------------------------------------------------
+// Discovery-stage constants
+// ---------------------------------------------------------------------------
+
+export const EXHIBITOR_KINDS = [
+  "game_studio",
+  "publisher",
+  "agency",
+  "tabletop_publisher",
+  "peripheral",
+  "media",
+  "community",
+  "other",
+] as const;
+export type ExhibitorKind = (typeof EXHIBITOR_KINDS)[number];
+
+export const DISCOVERY_SOURCES = [
+  "demo_page",
+  "description_explicit",
+  "description_inferred",
+  "name_is_game",
+  "bgg_match",
+  "web_search",
+] as const;
+export type DiscoverySource = (typeof DISCOVERY_SOURCES)[number];
+
+// ---------------------------------------------------------------------------
 // Pipeline stage types — each step has typed inputs and outputs
 // ---------------------------------------------------------------------------
 
@@ -57,6 +83,10 @@ export interface HarmonizedExhibitor {
   sourcePages: ("exhibitors" | "tabletop")[];
   /** Number of demos linked to this exhibitor. */
   demoCount: number;
+  /** Exhibitor classification from the discover stage. Null until discover runs. */
+  exhibitorKind: ExhibitorKind | null;
+  /** Number of games found by the discover stage (distinct from demoCount). */
+  discoveredGameCount: number;
   lastScrapedAt: string;
 }
 
@@ -81,6 +111,8 @@ export interface HarmonizedGame {
   sourcePages: ("exhibitors" | "tabletop" | "demos")[];
   /** Raw PAX demo data-id, null for exhibitor-only records. */
   demoId: string | null;
+  /** How this game was discovered. Null for demo-sourced games. */
+  discoverySource: DiscoverySource | null;
   lastScrapedAt: string;
 }
 

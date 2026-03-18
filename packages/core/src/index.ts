@@ -1,5 +1,14 @@
 // Types
-export type { Game, HarmonizedExhibitor, HarmonizedGame, RawDemo, RawExhibitor } from "./game";
+export type {
+  DiscoverySource,
+  ExhibitorKind,
+  Game,
+  HarmonizedExhibitor,
+  HarmonizedGame,
+  RawDemo,
+  RawExhibitor,
+} from "./game";
+export { DISCOVERY_SOURCES, EXHIBITOR_KINDS } from "./game";
 export type {
   AudienceTag,
   BusinessTag,
