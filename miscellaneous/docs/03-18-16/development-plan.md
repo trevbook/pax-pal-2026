@@ -14,7 +14,9 @@
 | 2.0 Scaffold `data-pipeline` | ✅ Complete | CLI, scrape, harmonize modules |
 | 2.1 Scrape | ✅ Complete | HTML parser + LeapEvent API (see `api-scrape-refactor.md`) |
 | 2.2 Harmonize | ✅ Complete | Exhibitors + games separated (see `harmonize-fix.md`) |
-| 2.3 Discover | 📋 **This document** | New stage — game identification from exhibitor data |
+| 2.3 Discover (Tier 1) | ✅ Complete | Structural deduction — booth sharing, skip detection, game-like names |
+| 2.3 Discover (Tier 2) | ✅ Complete | LLM classification via AI SDK v6 + gpt-5.4-mini |
+| 2.3 Discover (Tier 3) | 📋 Planned | Web search for remaining unknowns |
 | 2.4 Enrich | 📋 Planned | BGG + LLM enrichment |
 | 2.5 Classify | 📋 Planned | Taxonomy label assignment |
 | 2.6 Embed | 📋 Planned | Semantic search vectors |
@@ -367,6 +369,40 @@ packages/data-pipeline/src/discover/
 - `@google/generative-ai` — Gemini API (for Tier 2 classification and Tier 3 result parsing)
 
 **Estimated effort**: 2–3 days for Tier 1 + Tier 2. Tier 3 adds another half day.
+
+### Implementation notes (Tier 1 + Tier 2 — completed 2026-03-18)
+
+**Deviation from plan:** Used AI SDK v6 (`ai` + `@ai-sdk/openai`) with OpenAI `gpt-5.4-mini` instead of `@google/generative-ai` with Gemini. The `generateObject` API provides built-in Zod schema validation for structured output.
+
+**Files created:**
+
+```
+packages/data-pipeline/src/discover/
+├── types.ts              # Tier1Signal, DiscoveryResult, DiscoveredGame (Zod schemas)
+├── tier1.ts              # buildBoothIndex, detectUmbrellas, detectSkips, detectGameLikeNames, runTier1
+├── tier1.test.ts         # 16 tests
+├── tier2.ts              # classifyBatch (generateObject), loadCache/saveToCache, runTier2
+├── tier2.test.ts         # 9 tests (formatExhibitorForPrompt unit tests)
+├── discover.ts           # Orchestrator: runTier1 → runTier2 → build games + annotate exhibitors
+└── discover.test.ts      # 8 tests (with injected fake runTier2)
+```
+
+**Files modified:**
+
+- `packages/core/src/game.ts` — Added `EXHIBITOR_KINDS`, `DISCOVERY_SOURCES` const arrays + types; added `exhibitorKind`, `discoveredGameCount` to `HarmonizedExhibitor`; added `discoverySource` to `HarmonizedGame`
+- `packages/core/src/index.ts` — Exports new types and constants
+- `packages/data-pipeline/src/harmonize/harmonize.ts` — Sets new fields to defaults (`null`/`0`)
+- `packages/data-pipeline/src/cli.ts` — Added `discover` stage + `--skip-cache` flag; `all` now runs scrape → harmonize → discover
+- `packages/data-pipeline/src/index.ts` — Exports discover module
+- `packages/data-pipeline/package.json` — Added `ai`, `@ai-sdk/openai`, `zod` dependencies; added `discover` script
+
+**Dependencies added:** `ai@^6.0.0`, `@ai-sdk/openai@^3.0.0`, `zod@^4.3.0`
+
+**Caching:** Per-exhibitor JSON files at `miscellaneous/data/cache/discover/tier2/{exhibitorId}.json`. Re-runs skip cached exhibitors automatically. `--skip-cache` flag forces re-classification.
+
+**Tier 2 batching:** 5 exhibitors per LLM call, sequential processing. System prompt includes 4 few-shot examples (game_studio, peripheral, publisher, agency).
+
+**Test count:** 33 new tests (16 tier1 + 9 tier2 + 8 discover). All 114 project tests pass.
 
 ### Expected outcomes
 
