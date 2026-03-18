@@ -10,11 +10,15 @@
     "test": "bun test",
     "pipeline": "bun run src/cli.ts all",
     "scrape": "bun run src/cli.ts scrape",
-    "harmonize": "bun run src/cli.ts harmonize"
+    "harmonize": "bun run src/cli.ts harmonize",
+    "discover": "bun run src/cli.ts discover"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^3.0.41",
     "@pax-pal/core": "workspace:*",
-    "cheerio": "^1.0.0"
+    "ai": "^6.0.116",
+    "cheerio": "^1.0.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/bun": "^1.3.9",
