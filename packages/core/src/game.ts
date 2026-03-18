@@ -13,6 +13,8 @@ export interface RawExhibitor {
   boothLocation: string | null;
   description: string | null;
   imageUrl: string | null;
+  website: string | null;
+  storeUrl: string | null;
   showroomUrl: string | null;
   isFeatured: boolean;
   /** Raw CSS-class-derived tags from the PAX page (e.g. "cat-tabletop", "tag-rpg"). */
@@ -37,14 +39,38 @@ export interface RawDemo {
   lastScrapedAt: string;
 }
 
+/** Post-harmonization exhibitor record — always represents a company/org, never a game. */
+export interface HarmonizedExhibitor {
+  /** PAX exhibitor data-id. */
+  id: string;
+  name: string;
+  slug: string;
+  boothLocation: string | null;
+  description: string | null;
+  imageUrl: string | null;
+  website: string | null;
+  storeUrl: string | null;
+  showroomUrl: string | null;
+  isFeatured: boolean;
+  isTabletop: boolean;
+  paxTags: string[];
+  sourcePages: ("exhibitors" | "tabletop")[];
+  /** Number of demos linked to this exhibitor. */
+  demoCount: number;
+  lastScrapedAt: string;
+}
+
 /** Post-harmonization, pre-enrichment game record. */
 export interface HarmonizedGame {
-  /** PAX data-id — stable primary key throughout the system. */
+  /** `demo:{demoId}` for demo-sourced records, exhibitor data-id for exhibitor-only. */
   id: string;
+  /** Game title (from demo name) or exhibitor name (if no demos). */
   name: string;
   slug: string;
   type: GameType;
   exhibitor: string;
+  /** PAX exhibitor data-id — always populated. */
+  exhibitorId: string;
   boothLocation: string | null;
   description: string | null;
   imageUrl: string | null;
@@ -53,7 +79,7 @@ export interface HarmonizedGame {
   paxTags: string[];
   /** Which source pages contributed to this record. */
   sourcePages: ("exhibitors" | "tabletop" | "demos")[];
-  /** If this game had a demo entry, its ID. */
+  /** Raw PAX demo data-id, null for exhibitor-only records. */
   demoId: string | null;
   lastScrapedAt: string;
 }
@@ -75,6 +101,8 @@ export interface Game {
   imageUrl: string | null;
   mediaUrls: string[];
   exhibitor: string;
+  /** PAX exhibitor data-id. */
+  exhibitorId: string;
   boothId: string | null;
   showroomUrl: string | null;
 

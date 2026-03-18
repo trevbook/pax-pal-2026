@@ -1,9 +1,10 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { harmonize } from "./harmonize/harmonize";
+import { transformDemos, transformExhibitors } from "./scrape/api";
 import { parseDemoPage } from "./scrape/demos";
 import { parseExhibitorPage } from "./scrape/exhibitors";
-import { fetchHtml } from "./scrape/fetch-html";
+import { fetchApi, fetchLocalHtml } from "./scrape/fetch";
 
 const DATA_DIR = join(import.meta.dirname, "../../../miscellaneous/data");
 
@@ -20,19 +21,38 @@ async function writeJson(filePath: string, data: unknown) {
 // Stages
 // ---------------------------------------------------------------------------
 
-async function runScrape(source: "local" | "live") {
-  console.log(`\n[scrape] Fetching HTML (source: ${source})...`);
+async function runScrapeLocal() {
+  console.log("\n[scrape] Fetching local HTML...");
 
   const [exhibitorsHtml, demosHtml, tabletopHtml] = await Promise.all([
-    fetchHtml("exhibitors", source),
-    fetchHtml("demos", source),
-    fetchHtml("tabletop", source),
+    fetchLocalHtml("exhibitors"),
+    fetchLocalHtml("demos"),
+    fetchLocalHtml("tabletop"),
   ]);
 
-  console.log("[scrape] Parsing...");
-  const exhibitors = parseExhibitorPage(exhibitorsHtml, "exhibitors");
-  const demos = parseDemoPage(demosHtml);
-  const tabletop = parseExhibitorPage(tabletopHtml, "tabletop");
+  console.log("[scrape] Parsing HTML...");
+  return {
+    exhibitors: parseExhibitorPage(exhibitorsHtml, "exhibitors"),
+    demos: parseDemoPage(demosHtml),
+    tabletop: parseExhibitorPage(tabletopHtml, "tabletop"),
+  };
+}
+
+async function runScrapeLive() {
+  console.log("\n[scrape] Fetching from LeapEvent API...");
+
+  const apiData = await fetchApi();
+
+  console.log("[scrape] Transforming API data...");
+  const { exhibitors, tabletop } = transformExhibitors(apiData.exhibitors);
+  const demos = transformDemos(apiData.specials);
+
+  return { exhibitors, demos, tabletop };
+}
+
+async function runScrape(source: "local" | "live") {
+  const { exhibitors, demos, tabletop } =
+    source === "live" ? await runScrapeLive() : await runScrapeLocal();
 
   console.log(`  Exhibitors: ${exhibitors.length}`);
   console.log(`  Demos: ${demos.length}`);
@@ -62,17 +82,27 @@ async function runHarmonize() {
   console.log("[harmonize] Merging...");
   const result = harmonize(exhibitors, tabletop, demos);
 
-  console.log(`  Games: ${result.games.length}`);
+  console.log(`  Exhibitors: ${result.exhibitors.length}`);
+  console.log(`  Games (demo-sourced): ${result.games.length}`);
   console.log(`  Unmatched demos: ${result.unmatched.length}`);
 
-  // Type breakdown
+  // Exhibitor breakdown
+  const withDemos = result.exhibitors.filter((e) => e.demoCount > 0).length;
+  const withoutDemos = result.exhibitors.length - withDemos;
+  console.log(`  Exhibitors with demos: ${withDemos}`);
+  console.log(`  Exhibitors without demos (awaiting discovery): ${withoutDemos}`);
+
+  // Game type breakdown
   const byType = { video_game: 0, tabletop: 0, both: 0 };
   for (const g of result.games) byType[g.type]++;
-  console.log(`  By type: ${JSON.stringify(byType)}`);
+  console.log(`  Games by type: ${JSON.stringify(byType)}`);
 
   const outDir = join(DATA_DIR, "02-harmonized");
   await ensureDir(outDir);
-  await writeJson(join(outDir, "games.json"), result.games);
+  await Promise.all([
+    writeJson(join(outDir, "exhibitors.json"), result.exhibitors),
+    writeJson(join(outDir, "games.json"), result.games),
+  ]);
   if (result.unmatched.length > 0) {
     await writeJson(join(outDir, "unmatched.json"), result.unmatched);
   }

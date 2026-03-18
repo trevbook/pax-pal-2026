@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { harmonize } from "./harmonize/harmonize";
 import { parseDemoPage } from "./scrape/demos";
 import { parseExhibitorPage } from "./scrape/exhibitors";
-import { fetchHtml } from "./scrape/fetch-html";
+import { fetchLocalHtml } from "./scrape/fetch";
 
 /**
  * Integration tests that run against the real sample HTML files.
@@ -11,9 +11,9 @@ import { fetchHtml } from "./scrape/fetch-html";
  */
 describe("integration: scrape + harmonize against sample HTML", () => {
   // Scrape all three pages upfront (shared across tests)
-  const exhibitorsHtml = fetchHtml("exhibitors", "local");
-  const demosHtml = fetchHtml("demos", "local");
-  const tabletopHtml = fetchHtml("tabletop", "local");
+  const exhibitorsHtml = fetchLocalHtml("exhibitors");
+  const demosHtml = fetchLocalHtml("demos");
+  const tabletopHtml = fetchLocalHtml("tabletop");
 
   describe("scrape: exhibitors", () => {
     it("parses all 345 exhibitor entries", async () => {
@@ -86,7 +86,7 @@ describe("integration: scrape + harmonize against sample HTML", () => {
   });
 
   describe("harmonize", () => {
-    it("merges all sources into 346 games with 0 unmatched demos", async () => {
+    it("emits all exhibitors and only demo-sourced games", async () => {
       const [exHtml, demoHtml, ttHtml] = await Promise.all([
         exhibitorsHtml,
         demosHtml,
@@ -96,13 +96,52 @@ describe("integration: scrape + harmonize against sample HTML", () => {
       const demos = parseDemoPage(demoHtml);
       const tabletop = parseExhibitorPage(ttHtml, "tabletop");
 
-      const { games, unmatched } = harmonize(exhibitors, tabletop, demos);
+      const result = harmonize(exhibitors, tabletop, demos);
 
-      expect(games).toHaveLength(346);
-      expect(unmatched).toHaveLength(0);
+      // All exhibitors are preserved (345 from main + tabletop-only entries)
+      expect(result.exhibitors.length).toBeGreaterThanOrEqual(345);
+      // Only demo-sourced entries become games
+      expect(result.games).toHaveLength(109);
+      expect(result.unmatched).toHaveLength(0);
     });
 
-    it("produces all three game types", async () => {
+    it("demo-sourced games have demo: id prefix and game-specific names", async () => {
+      const [exHtml, demoHtml, ttHtml] = await Promise.all([
+        exhibitorsHtml,
+        demosHtml,
+        tabletopHtml,
+      ]);
+      const { games } = harmonize(
+        parseExhibitorPage(exHtml, "exhibitors"),
+        parseExhibitorPage(ttHtml, "tabletop"),
+        parseDemoPage(demoHtml),
+      );
+
+      for (const game of games) {
+        expect(game.id).toStartWith("demo:");
+        expect(game.demoId).toBeTruthy();
+        expect(game.sourcePages).toContain("demos");
+      }
+    });
+
+    it("every game has exhibitorId populated", async () => {
+      const [exHtml, demoHtml, ttHtml] = await Promise.all([
+        exhibitorsHtml,
+        demosHtml,
+        tabletopHtml,
+      ]);
+      const { games } = harmonize(
+        parseExhibitorPage(exHtml, "exhibitors"),
+        parseExhibitorPage(ttHtml, "tabletop"),
+        parseDemoPage(demoHtml),
+      );
+
+      for (const game of games) {
+        expect(game.exhibitorId).toBeTruthy();
+      }
+    });
+
+    it("demo-sourced games are video_game or both (never pure tabletop)", async () => {
       const [exHtml, demoHtml, ttHtml] = await Promise.all([
         exhibitorsHtml,
         demosHtml,
@@ -116,8 +155,30 @@ describe("integration: scrape + harmonize against sample HTML", () => {
 
       const types = new Set(games.map((g) => g.type));
       expect(types.has("video_game")).toBe(true);
-      expect(types.has("tabletop")).toBe(true);
       expect(types.has("both")).toBe(true);
+      // Pure "tabletop" type requires the discover stage (no demo signal)
+      expect(types.has("tabletop")).toBe(false);
+    });
+
+    it("exhibitors track demo counts", async () => {
+      const [exHtml, demoHtml, ttHtml] = await Promise.all([
+        exhibitorsHtml,
+        demosHtml,
+        tabletopHtml,
+      ]);
+      const { exhibitors } = harmonize(
+        parseExhibitorPage(exHtml, "exhibitors"),
+        parseExhibitorPage(ttHtml, "tabletop"),
+        parseDemoPage(demoHtml),
+      );
+
+      const withDemos = exhibitors.filter((e) => e.demoCount > 0);
+      const withoutDemos = exhibitors.filter((e) => e.demoCount === 0);
+      expect(withDemos.length).toBeGreaterThan(0);
+      expect(withoutDemos.length).toBeGreaterThan(0);
+      // Total demos across all exhibitors should equal 109
+      const totalDemos = exhibitors.reduce((sum, e) => sum + e.demoCount, 0);
+      expect(totalDemos).toBe(109);
     });
 
     it("every game has a valid slug", async () => {

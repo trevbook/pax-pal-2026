@@ -53,6 +53,8 @@ export function parseExhibitorPage(
       boothLocation,
       description,
       imageUrl,
+      website: null,
+      storeUrl: null,
       showroomUrl,
       isFeatured,
       paxTags,

@@ -1,5 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import type { Game, GameType, HarmonizedGame, RawDemo, RawExhibitor, Tag } from "./index";
+import type {
+  Game,
+  GameType,
+  HarmonizedExhibitor,
+  HarmonizedGame,
+  RawDemo,
+  RawExhibitor,
+  Tag,
+} from "./index";
 import {
   ALL_TAGS,
   AUDIENCE_TAGS,
@@ -75,6 +83,8 @@ describe("type compatibility", () => {
       boothLocation: "Hall A",
       description: "A test game",
       imageUrl: null,
+      website: "https://example.com",
+      storeUrl: null,
       showroomUrl: null,
       isFeatured: false,
       paxTags: ["cat-tabletop"],
@@ -82,6 +92,27 @@ describe("type compatibility", () => {
       lastScrapedAt: new Date().toISOString(),
     };
     expect(raw.id).toBe("123");
+  });
+
+  test("HarmonizedExhibitor satisfies shape", () => {
+    const exhibitor: HarmonizedExhibitor = {
+      id: "123",
+      name: "Publisher Inc",
+      slug: "publisher-inc",
+      boothLocation: "Hall A",
+      description: "A publisher",
+      imageUrl: null,
+      website: "https://publisher.com",
+      storeUrl: null,
+      showroomUrl: null,
+      isFeatured: false,
+      isTabletop: false,
+      paxTags: [],
+      sourcePages: ["exhibitors"],
+      demoCount: 3,
+      lastScrapedAt: new Date().toISOString(),
+    };
+    expect(exhibitor.demoCount).toBe(3);
   });
 
   test("RawDemo satisfies shape", () => {
@@ -99,11 +130,12 @@ describe("type compatibility", () => {
 
   test("HarmonizedGame satisfies shape", () => {
     const game: HarmonizedGame = {
-      id: "123",
+      id: "demo:456",
       name: "Test Game",
       slug: "test-game",
       type: "video_game",
       exhibitor: "Publisher Inc",
+      exhibitorId: "123",
       boothLocation: null,
       description: null,
       imageUrl: null,
@@ -128,6 +160,7 @@ describe("type compatibility", () => {
       imageUrl: "https://example.com/img.png",
       mediaUrls: [],
       exhibitor: "Publisher Inc",
+      exhibitorId: "123",
       boothId: "A-101",
       showroomUrl: null,
       tags: ["RPG", "Co-op"] satisfies Tag[],
