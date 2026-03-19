@@ -181,7 +181,7 @@ export async function runTier2(
   signals: Map<string, Tier1Signal>,
   options: Tier2Options = {},
 ): Promise<{ results: Map<string, DiscoveryResult>; cachedCount: number }> {
-  const { batchSize = 5, concurrency = 4, cacheDir, skipCache = false } = options;
+  const { batchSize = 5, concurrency = 8, cacheDir, skipCache = false } = options;
 
   const exhibitorMap = new Map(allExhibitors.map((ex) => [ex.id, ex]));
 

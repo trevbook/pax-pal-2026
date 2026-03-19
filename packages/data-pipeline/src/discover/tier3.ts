@@ -263,7 +263,7 @@ export async function runTier3(
   allExhibitors: HarmonizedExhibitor[],
   options: Tier3Options = {},
 ): Promise<Tier3Result> {
-  const { concurrency = 2, cacheDir, skipCache = false } = options;
+  const { concurrency = 8, cacheDir, skipCache = false } = options;
 
   const exhibitorMap = new Map(allExhibitors.map((ex) => [ex.id, ex]));
 

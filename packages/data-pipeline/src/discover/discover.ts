@@ -86,7 +86,6 @@ export async function discover(
     console.log(`\n[discover] Running Tier 3: web search (${tier3Eligible.length} exhibitors)...`);
     const tier3Fn = options._runTier3 ?? runTier3;
     const tier3 = await tier3Fn(tier3Eligible, allExhibitors, {
-      concurrency: 2,
       cacheDir: options.tier3CacheDir,
       skipCache: options.skipCache,
     });
