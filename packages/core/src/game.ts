@@ -138,6 +138,34 @@ export interface HarmonizedGame {
 }
 
 // ---------------------------------------------------------------------------
+// Enrichment-stage types
+// ---------------------------------------------------------------------------
+
+export const PRESS_LINK_TYPES = [
+  "review",
+  "preview",
+  "interview",
+  "announcement",
+  "trailer",
+  "other",
+] as const;
+export type PressLinkType = (typeof PRESS_LINK_TYPES)[number];
+
+export interface PressLink {
+  url: string;
+  title: string;
+  source: string;
+  type: PressLinkType;
+}
+
+export interface SocialLinks {
+  twitter: string | null;
+  discord: string | null;
+  youtube: string | null;
+  itchIo: string | null;
+}
+
+// ---------------------------------------------------------------------------
 // Full Game type — the final enriched, classified, embedded record
 // ---------------------------------------------------------------------------
 
@@ -169,6 +197,16 @@ export interface Game {
   genres: VideoGameGenre[] | null;
   releaseStatus: string | null;
   steamUrl: string | null;
+
+  // External IDs
+  bggId: number | null;
+  steamAppId: number | null;
+
+  // Enrichment metadata
+  pressLinks: PressLink[];
+  socialLinks: SocialLinks;
+  developerName: string | null;
+  price: string | null;
 
   // Tabletop fields (nullable — only present for tabletop / both)
   playerCount: string | null;

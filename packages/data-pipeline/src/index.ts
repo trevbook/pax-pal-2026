@@ -7,6 +7,15 @@ export type {
   Tier1Result,
   Tier1Signal,
 } from "./discover/types";
+export type { EnrichResult } from "./enrich/enrich";
+export { enrich } from "./enrich/enrich";
+export type {
+  BggEnrichment,
+  EnrichmentMeta,
+  EnrichStats,
+  SteamEnrichment,
+  WebEnrichment,
+} from "./enrich/types";
 export type { HarmonizeResult } from "./harmonize/harmonize";
 export { harmonize } from "./harmonize/harmonize";
 export { transformDemos, transformExhibitors } from "./scrape/api";

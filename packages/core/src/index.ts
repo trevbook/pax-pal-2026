@@ -8,15 +8,19 @@ export type {
   HarmonizedGame,
   InclusionTier,
   PaxConfirmation,
+  PressLink,
+  PressLinkType,
   RawDemo,
   RawExhibitor,
   ReleaseStatus,
+  SocialLinks,
 } from "./game";
 export {
   DISCOVERY_SOURCES,
   EXHIBITOR_KINDS,
   INCLUSION_TIERS,
   PAX_CONFIRMATIONS,
+  PRESS_LINK_TYPES,
   RELEASE_STATUSES,
 } from "./game";
 export type {

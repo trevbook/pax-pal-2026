@@ -17,7 +17,7 @@
 | 2.3 Discover (Tier 1) | ✅ Complete | Structural deduction — booth sharing, skip detection, game-like names |
 | 2.3 Discover (Tier 2) | ✅ Complete | LLM classification via AI SDK v6 + gpt-5.4-mini |
 | 2.3 Discover (Tier 3) | ✅ Complete | Web search agent via AI SDK v6 + OpenAI Responses API |
-| 2.4 Enrich | 📋 Planned | BGG + LLM enrichment |
+| 2.4 Enrich | ✅ Complete | BGG + LLM web search + Steam API + URL validation |
 | 2.5 Classify | 📋 Planned | Taxonomy label assignment |
 | 2.6 Embed | 📋 Planned | Semantic search vectors |
 | 3. Infrastructure | 📋 Planned | DynamoDB, SST deploy |
@@ -453,50 +453,322 @@ Conservative estimates for what discover will find:
 
 ## Stage 2.4: Enrich
 
-**Input**: `02-harmonized/games.json` (post-discover, ~350–450 games)
-**Output**: `miscellaneous/data/03-enriched/games.json`
+**Input**: `02-harmonized/games.json` (post-discover, ~370 games)
+**Output**: `miscellaneous/data/03-enriched/games.json` + `miscellaneous/data/03-enriched/enrichment-meta.json`
 
-Two enrichment paths running in parallel:
+Four enrichment steps running in sequence. Each step builds on the previous — e.g., Step 2 skips tabletop games that already got a BGG hit, and Step 3 only runs for games where Step 2 found a Steam URL.
 
-### BGG enrichment (tabletop games)
+### Overview
+
+```
+370 games (post-discover)
+         │
+    ┌────▼─────┐
+    │  Step 1   │  BGG API lookup (tabletop/both only, ~60–80 games)
+    │  (free)   │  → playerCount, playTime, complexity, mechanics, bggId, image
+    └────┬──────┘
+         │
+    ┌────▼─────┐
+    │  Step 2   │  LLM web search agent (per-game, gpt-5.4-mini)
+    │  ($$)     │  → summary, description, platforms, genres, steamUrl, pressLinks, etc.
+    │           │  Tabletop: SKIP if BGG hit in Step 1
+    └────┬──────┘
+         │
+    ┌────▼─────┐
+    │  Step 3   │  Steam API (video games with steamUrl from Step 2)
+    │  (free)   │  → price, screenshots, tags, description, review score
+    └────┬──────┘
+         │
+    ┌────▼─────┐
+    │  Step 4   │  URL validation (HEAD requests, all collected URLs)
+    │  (free)   │  → drop any 404'd URLs
+    └─────────┘
+```
+
+### Step 1: BGG enrichment (tabletop games)
 
 For each game where `type === "tabletop" || type === "both"`:
 
 1. Search BGG: `GET https://boardgamegeek.com/xmlapi2/search?query={name}&type=boardgame`
-2. Parse XML response, pick best match (fuzzy name match, prioritize exact matches)
-3. Fetch details: `GET https://boardgamegeek.com/xmlapi2/thing?id={bggId}&stats=1`
-4. Extract: `playerCount`, `playTime`, `complexity` (weight), `mechanics`, description, image
-5. Rate limit: ~1 req/sec (BGG is lenient)
-6. Cache responses to `miscellaneous/data/cache/bgg/`
+2. Parse XML response, score candidates with Levenshtein distance against game name.
+3. **Matching logic:**
+   - If best match score > 0.90 → auto-accept.
+   - If best match score 0.60–0.90 → send top 5 candidates + game description/exhibitor to `gpt-5.4-nano` for lightweight disambiguation ("which of these BGG results is the same game?"). Dirt cheap — <200 tokens per call.
+   - If best match score < 0.60 → no BGG match, flag for Step 2 web search.
+4. For matched games, fetch details: `GET https://boardgamegeek.com/xmlapi2/thing?id={bggId}&stats=1`
+5. Extract and store as `BggEnrichment`:
 
-### LLM enrichment (all games)
+```typescript
+interface BggEnrichment {
+  bggId: number;
+  bggName: string;           // canonical BGG name
+  matchScore: number;        // Levenshtein score, or 1.0 if LLM-confirmed
+  playerCount: string;       // "2-4"
+  playTime: string;          // "30-60 min"
+  complexity: number;        // BGG weight 1.0-5.0
+  mechanics: string[];       // raw BGG mechanics (mapped to TabletopMechanic in classify stage)
+  description: string;
+  imageUrl: string;
+  rating: number;            // BGG average rating
+  yearPublished: number | null;
+}
+```
 
-For each game, use Gemini (with web search grounding if available) to fill:
+**Rate limiting**: ~1 req/sec to BGG. ~80 searches + ~60 detail fetches = ~140 requests, ~2.5 min.
 
-- Full description (if the exhibitor description is about the company, not the game)
-- A snappy 1–2 sentence `summary`
-- Image URL (Steam header, publisher site, etc.)
-- Video game fields: `platforms`, `genres`, `releaseStatus`, `steamUrl`
-- Any tabletop fields BGG didn't cover
-- Use structured output (JSON mode)
-- Process in batches, skip games that already have complete data
-- Incremental: check `enrichedAt` timestamp for re-runs
+**Type correction**: If BGG confirms a game as tabletop but it's currently typed as `video_game` (or vice versa), enrich corrects the `type` field.
+
+**Cache**: Per-game at `miscellaneous/data/cache/enrich/bgg/{gameId}.json`.
+
+### Step 2: LLM web search enrichment (per-game)
+
+Same agent pattern as Tier 3 discover: `generateText` + `openai.tools.webSearch()` + `Output.object()` with `gpt-5.4-mini`.
+
+**Input**: All games EXCEPT tabletop games that got a BGG hit in Step 1 (have a `bggId`).
+
+**Prompt context includes**:
+- Game name, type, exhibitor name, description (from harmonized data)
+- `discoveryMeta.evidenceUrls` if present — included as starting context ("Here are some URLs we already know about"), not as a constraint
+- Exhibitor website/storeUrl if available
+
+**Agent config**: `gpt-5.4-mini`, `stopWhen: stepCountIs(8)`, `searchContextSize: "low"`, concurrency 8.
+
+**Requested output** (structured JSON via Zod schema):
+
+```typescript
+const webEnrichmentSchema = z.object({
+  summary: z.string(),                          // 1-2 sentence hook
+  description: z.string().nullable(),            // fuller description if available
+  imageUrl: z.string().nullable(),               // Steam header, official art, etc.
+
+  // Video game fields
+  platforms: z.array(z.enum(PLATFORMS)).nullable(),
+  genres: z.array(z.enum(VIDEO_GAME_GENRES)).nullable(),
+  releaseStatus: z.enum(RELEASE_STATUSES).nullable(),
+  releaseDate: z.string().nullable(),            // "2025-Q2", "March 2026", etc.
+  steamUrl: z.string().nullable(),
+
+  // Tabletop fields (for BGG misses only)
+  playerCount: z.string().nullable(),
+  playTime: z.string().nullable(),
+  mechanics: z.array(z.enum(TABLETOP_MECHANICS)).nullable(),
+
+  // Press & media coverage
+  pressLinks: z.array(z.object({
+    url: z.string(),
+    title: z.string(),
+    source: z.string(),                          // "PC Gamer", "Dicebreaker", etc.
+    type: z.enum(["review", "preview", "interview", "announcement", "trailer", "other"]),
+  })),
+
+  // Social presence
+  socialLinks: z.object({
+    twitter: z.string().nullable(),
+    discord: z.string().nullable(),
+    youtube: z.string().nullable(),
+    itchIo: z.string().nullable(),
+  }),
+
+  // Media
+  trailerUrl: z.string().nullable(),             // YouTube/Steam trailer
+  screenshotUrls: z.array(z.string()),           // up to 3-4
+
+  // Developer info (sometimes differs from exhibitor)
+  developerName: z.string().nullable(),
+});
+```
+
+**Press/article collection**: The web search agent naturally hits news sites and social media. The prompt explicitly asks it to collect press links — articles, previews, reviews, trailers, announcements about the game. These map to a "Read more" section on the frontend game detail page. If multiple games from the same exhibitor share a press article (e.g., "Publisher X brings 3 games to PAX East"), each game gets its own copy of the link.
+
+**Note on web search data**: The OpenAI web search tool is opaque — you don't get raw search result URLs back in the API response; only what the model includes in its structured output. The URL validation pass (Step 4) confirms they're real.
+
+**Cache**: Per-game at `miscellaneous/data/cache/enrich/web/{gameId}.json`.
+
+### Step 3: Steam API enrichment
+
+**Input**: Games where Step 2 found a `steamUrl`. Extract `steamAppId` via regex from the URL.
+
+**API**: `GET https://store.steampowered.com/api/appdetails?appids={appId}` — free, no auth needed, generous rate limits.
+
+**Extract and store as `SteamEnrichment`**:
+
+```typescript
+interface SteamEnrichment {
+  steamAppId: number;
+  name: string;
+  shortDescription: string;
+  headerImage: string;          // 460x215 header image
+  screenshots: string[];        // up to 4
+  movies: { thumbnail: string; webm: string }[];  // trailers
+  price: string | null;         // "$19.99" or "Free to Play"
+  genres: string[];             // Steam's genre tags
+  categories: string[];         // "Single-player", "Co-op", etc.
+  releaseDate: string;          // "Mar 15, 2026"
+  reviewScore: number | null;   // Metacritic or Steam review score
+  platforms: { windows: boolean; mac: boolean; linux: boolean };
+}
+```
+
+Steam data provides verified screenshots, trailers, and pricing that the LLM may have hallucinated. Steam data can backfill or override LLM data where applicable.
+
+**Rate limiting**: ~1 req/sec. Estimated ~100–150 video games with Steam URLs = ~2.5 min.
+
+**Cache**: Per-app at `miscellaneous/data/cache/enrich/steam/{steamAppId}.json`.
+
+### Step 4: URL validation
+
+After all enrichment steps, collect every URL found across all sources (`imageUrl`, `steamUrl`, `trailerUrl`, `pressLinks[].url`, `screenshotUrls`, `socialLinks.*`). Run parallel HEAD requests to verify each is live.
+
+```typescript
+async function validateUrl(url: string): Promise<boolean> {
+  try {
+    const res = await fetch(url, {
+      method: "HEAD",
+      redirect: "follow",
+      signal: AbortSignal.timeout(5000),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+```
+
+High concurrency (20–30 workers), 5s timeout. ~370 games × ~5 URLs each = ~1850 requests, ~30 seconds. Drop any URLs that 404.
+
+### EnrichmentMeta sidecar
+
+All raw enrichment data is stored separately from the final `Game` shape. This preserves source data for debugging, re-processing, and later merge-strategy tuning.
+
+```typescript
+interface EnrichmentMeta {
+  gameId: string;
+
+  // Raw source data (preserved for debugging/re-processing)
+  bgg: BggEnrichment | null;
+  web: z.infer<typeof webEnrichmentSchema> | null;
+  steam: SteamEnrichment | null;
+
+  // Validation results
+  validatedUrls: string[];      // URLs that passed HEAD check
+  invalidUrls: string[];        // URLs that 404'd
+
+  enrichedAt: string;
+}
+```
+
+The final `Game` record shape (built during classify/load) merges fields from the sidecar with whatever priority logic makes sense — this can be adjusted after reviewing initial results.
 
 ### Files
 
 ```
 packages/data-pipeline/src/enrich/
-├── enrich.ts          # Orchestrator
+├── enrich.ts              # Orchestrator: BGG → web search → Steam → validate
 ├── enrich.test.ts
-├── bgg.ts             # BGG API client + matching
+├── bgg.ts                 # BGG XML API client, search, Levenshtein matching, nano LLM disambiguation
 ├── bgg.test.ts
-├── llm.ts             # Gemini enrichment prompts
-└── llm.test.ts        # Mocked responses
+├── web.ts                 # LLM web search agent (per-game, gpt-5.4-mini)
+├── web.test.ts
+├── steam.ts               # Steam store API client
+├── steam.test.ts
+├── validate.ts            # URL HEAD-check pass
+├── validate.test.ts
+└── types.ts               # EnrichmentMeta, BggEnrichment, SteamEnrichment, Zod schemas
 ```
 
-**Dependencies**: `@google/generative-ai`
+### Core type additions
 
-**Estimated effort**: 1–2 days
+Add to `packages/core/src/game.ts`:
+- `bggId: number | null` on `Game`
+- `steamAppId: number | null` on `Game`
+- `pressLinks` array on `Game`
+- `socialLinks` object on `Game`
+- `developerName: string | null` on `Game`
+- `price: string | null` on `Game`
+
+### Dependencies
+
+No new dependencies needed. Reuses existing `ai` + `@ai-sdk/openai`. BGG and Steam APIs are plain HTTP (fetch). Levenshtein can be a small utility function.
+
+### CLI integration
+
+```bash
+# Run enrich only
+bun run src/cli.ts enrich
+
+# Enrich with limit (test on N random games first)
+bun run src/cli.ts enrich --limit 5
+
+# Skip cache for full re-enrichment
+bun run src/cli.ts enrich --skip-cache
+
+# Full pipeline
+bun run src/cli.ts all --source live --web-search
+```
+
+The `--limit N` flag selects N random games to enrich, useful for testing prompts and validating output quality before running the full set.
+
+### Cost estimate
+
+| Step | Volume | Cost |
+|------|--------|------|
+| BGG API | ~140 requests | Free |
+| BGG disambiguation (gpt-5.4-nano) | ~20–30 calls, <200 tokens each | ~$0.01 |
+| LLM web search (gpt-5.4-mini) | ~300 games × ~8 steps | ~$3–5 |
+| Steam API | ~100–150 requests | Free |
+| URL validation | ~1850 HEAD requests | Free |
+| **Total** | | **~$3–5** |
+
+### Estimated effort
+
+2–3 days (Step 1: half day, Step 2: 1 day, Step 3: half day, Step 4 + wiring: half day)
+
+### Implementation notes (completed 2026-03-19)
+
+**Approach:** Four-step sequential enrichment: BGG XML API → LLM web search agent → Steam store API → URL validation. Same AI SDK v6 + OpenAI patterns as discover Tier 3.
+
+**Files created:**
+
+```
+packages/data-pipeline/src/enrich/
+├── types.ts              # BggEnrichment, WebEnrichment, SteamEnrichment, EnrichmentMeta, Zod schemas
+├── bgg.ts                # BGG XML API search + detail fetch, Levenshtein matching, gpt-5.4-nano disambiguation
+├── bgg.test.ts           # 8 tests (Levenshtein similarity)
+├── web.ts                # Per-game web search agent (gpt-5.4-mini + openai.tools.webSearch)
+├── web.test.ts           # 7 tests (prompt construction, discoveryMeta evidence URL inclusion)
+├── steam.ts              # Steam store API client, app ID extraction, deduplication
+├── steam.test.ts         # 8 tests (Steam URL parsing)
+├── validate.ts           # URL HEAD-check validation with concurrent worker pool
+├── validate.test.ts      # 4 tests (URL checking)
+├── enrich.ts             # Orchestrator: BGG → web → Steam → validate, DI overrides, URL scrubbing
+└── enrich.test.ts        # 20 tests (full pipeline flow, URL scrubbing, bare social link filtering)
+```
+
+**Files modified:**
+
+- `packages/core/src/game.ts` — Added `PressLink`, `SocialLinks`, `PressLinkType` types; added `bggId`, `steamAppId`, `pressLinks`, `socialLinks`, `developerName`, `price` to `Game`
+- `packages/core/src/index.ts` — Exports new types and constants
+- `packages/data-pipeline/src/cli.ts` — Added `enrich` stage with `--limit` and `--skip-cache` flags; wired into `all` pipeline after discover
+- `packages/data-pipeline/src/index.ts` — Exports enrich module
+- `packages/data-pipeline/package.json` — Added `enrich` script
+
+**No new dependencies.** Reuses existing `ai` + `@ai-sdk/openai`, `cheerio` (for BGG XML), `zod`, `cli-progress`. BGG and Steam APIs use plain `fetch`.
+
+**Key design decisions:**
+
+- BGG matching uses Levenshtein similarity with three tiers: auto-accept (>0.90), LLM disambiguation via `gpt-5.4-nano` (0.60–0.90), no match (<0.60)
+- Web search agent includes `discoveryMeta.evidenceUrls` in the prompt as starting context, not as constraints
+- Tabletop games with BGG hits skip web search enrichment
+- Steam app IDs extracted from web search `steamUrl` via regex; multiple games may share the same Steam app (deduplicated)
+- URL validation runs HEAD requests with 25 concurrent workers, 5s timeout
+- Invalid URLs are scrubbed from all enrichment data (imageUrl, pressLinks, socialLinks, screenshots, etc.) — not just tracked
+- Bare-domain social links (e.g., `https://x.com`, `https://discord.gg`) are detected and nulled out via both prompt instructions and post-hoc filtering
+- `EnrichmentMeta` sidecar preserves raw enrichment data per source for debugging and future merge-strategy tuning
+- Type correction: if BGG matches a game typed `video_game`, it's updated to `both`
+
+**Caching:** Per-game JSON files at `cache/enrich/bgg/`, `cache/enrich/web/`, `cache/enrich/steam/`. Re-runs skip cached games. `--skip-cache` flag forces re-enrichment.
+
+**Test count:** 47 new tests across 5 files. All 177 project tests pass.
 
 ---
 

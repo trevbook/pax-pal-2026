@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { discover } from "./discover/discover";
+import { enrich } from "./enrich/enrich";
 import { harmonize } from "./harmonize/harmonize";
 import { transformDemos, transformExhibitors } from "./scrape/api";
 import { parseDemoPage } from "./scrape/demos";
@@ -147,11 +148,39 @@ async function runDiscover(skipCache: boolean, webSearch: boolean, tier3Limit?: 
   console.log("[discover] Done.");
 }
 
+async function runEnrich(skipCache: boolean, limit?: number) {
+  console.log("\n[enrich] Loading harmonized data...");
+
+  const harmonizedDir = join(DATA_DIR, "02-harmonized");
+  const games = await Bun.file(join(harmonizedDir, "games.json")).json();
+
+  console.log(`  Games to enrich: ${games.length}`);
+
+  const result = await enrich(games, {
+    bggCacheDir: join(DATA_DIR, "cache/enrich/bgg"),
+    webCacheDir: join(DATA_DIR, "cache/enrich/web"),
+    steamCacheDir: join(DATA_DIR, "cache/enrich/steam"),
+    skipCache,
+    limit,
+  });
+
+  console.log(`  Stats: ${JSON.stringify(result.stats)}`);
+
+  const outDir = join(DATA_DIR, "03-enriched");
+  await ensureDir(outDir);
+  await Promise.all([
+    writeJson(join(outDir, "games.json"), result.games),
+    writeJson(join(outDir, "enrichment-meta.json"), result.enrichmentMeta),
+  ]);
+
+  console.log("[enrich] Done.");
+}
+
 // ---------------------------------------------------------------------------
 // CLI entry point
 // ---------------------------------------------------------------------------
 
-const STAGES = ["scrape", "harmonize", "discover", "all"] as const;
+const STAGES = ["scrape", "harmonize", "discover", "enrich", "all"] as const;
 type Stage = (typeof STAGES)[number];
 
 function printUsage() {
@@ -187,6 +216,10 @@ async function main() {
 
   if (stage === "discover" || stage === "all") {
     await runDiscover(skipCache, webSearch, tier3Limit);
+  }
+
+  if (stage === "enrich" || stage === "all") {
+    await runEnrich(skipCache, tier3Limit);
   }
 
   console.log("\nPipeline complete.");

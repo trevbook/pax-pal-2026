@@ -11,7 +11,8 @@
     "pipeline": "bun run src/cli.ts all",
     "scrape": "bun run src/cli.ts scrape",
     "harmonize": "bun run src/cli.ts harmonize",
-    "discover": "bun run src/cli.ts discover"
+    "discover": "bun run src/cli.ts discover",
+    "enrich": "bun run src/cli.ts enrich"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.41",
