@@ -1,4 +1,5 @@
 import type {
+  DiscoveryMeta,
   DiscoverySource,
   ExhibitorKind,
   HarmonizedExhibitor,
@@ -78,6 +79,7 @@ export async function discover(
   }
 
   let tier3Results = new Map<string, DiscoveryResult>();
+  let tier3Evidence = new Map<string, DiscoveryMeta>();
   let tier3CachedCount = 0;
 
   if (options.webSearch && tier3Eligible.length > 0) {
@@ -89,6 +91,7 @@ export async function discover(
       skipCache: options.skipCache,
     });
     tier3Results = tier3.results;
+    tier3Evidence = tier3.evidenceByGame;
     tier3CachedCount = tier3.cachedCount;
   } else if (tier3Eligible.length > 0) {
     console.log(
@@ -113,8 +116,10 @@ export async function discover(
     if (!exhibitor) continue;
 
     for (const game of discovery.games) {
+      // Look up evidence metadata for tier3-discovered games
+      const meta = tier3Evidence.get(`${exhibitorId}:${game.name}`) ?? null;
       discoveredGames.push(
-        toHarmonizedGame(game.name, exhibitor, mapSource(game.source), game.type),
+        toHarmonizedGame(game.name, exhibitor, mapSource(game.source), game.type, meta),
       );
     }
   }
@@ -172,6 +177,7 @@ function toHarmonizedGame(
   exhibitor: HarmonizedExhibitor,
   discoverySource: DiscoverySource,
   gameType: "video_game" | "tabletop" | "both" | null,
+  discoveryMeta?: DiscoveryMeta | null,
 ): HarmonizedGame {
   const slug = toSlug(gameName);
   const type = gameType ?? (exhibitor.isTabletop ? "tabletop" : "video_game");
@@ -192,6 +198,7 @@ function toHarmonizedGame(
     sourcePages: [...exhibitor.sourcePages],
     demoId: null,
     discoverySource,
+    discoveryMeta: discoveryMeta ?? null,
     lastScrapedAt: exhibitor.lastScrapedAt,
   };
 }

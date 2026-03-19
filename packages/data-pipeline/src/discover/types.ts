@@ -1,4 +1,9 @@
-import { EXHIBITOR_KINDS } from "@pax-pal/core";
+import {
+  EXHIBITOR_KINDS,
+  INCLUSION_TIERS,
+  PAX_CONFIRMATIONS,
+  RELEASE_STATUSES,
+} from "@pax-pal/core";
 import { z } from "zod";
 
 // ---------------------------------------------------------------------------
@@ -61,6 +66,37 @@ export const batchResultSchema = z.object({
 
 export type DiscoveredGame = z.infer<typeof discoveredGameSchema>;
 export type DiscoveryResult = z.infer<typeof discoveryResultSchema>;
+
+// ---------------------------------------------------------------------------
+// Tier 3 — evidence-based game discovery
+// ---------------------------------------------------------------------------
+
+export const gameEvidenceSchema = z.object({
+  name: z.string(),
+  type: z.enum(["video_game", "tabletop", "both"]).nullable(),
+  evidence: z.object({
+    paxConfirmation: z.enum(PAX_CONFIRMATIONS),
+    isPrimaryGame: z.boolean(),
+    exhibitorGameCount: z.number(),
+    releaseStatus: z.enum(RELEASE_STATUSES),
+    releaseYear: z.number().nullable(),
+    sourceType: z.enum(["official_site", "steam", "bgg", "social_media", "press", "other"]),
+    summary: z.string(),
+    urls: z.array(z.string()),
+  }),
+});
+
+export const tier3EvidenceResultSchema = z.object({
+  exhibitorKind: z.enum(EXHIBITOR_KINDS),
+  games: z.array(gameEvidenceSchema),
+  reasoning: z.string(),
+});
+
+export type GameEvidence = z.infer<typeof gameEvidenceSchema>;
+export type Tier3EvidenceResult = z.infer<typeof tier3EvidenceResultSchema>;
+
+export const inclusionTierSchema = z.enum(INCLUSION_TIERS);
+export type InclusionTier = z.infer<typeof inclusionTierSchema>;
 
 // ---------------------------------------------------------------------------
 // Discover stage output

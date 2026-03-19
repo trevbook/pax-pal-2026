@@ -1,14 +1,24 @@
 // Types
 export type {
+  DiscoveryMeta,
   DiscoverySource,
   ExhibitorKind,
   Game,
   HarmonizedExhibitor,
   HarmonizedGame,
+  InclusionTier,
+  PaxConfirmation,
   RawDemo,
   RawExhibitor,
+  ReleaseStatus,
 } from "./game";
-export { DISCOVERY_SOURCES, EXHIBITOR_KINDS } from "./game";
+export {
+  DISCOVERY_SOURCES,
+  EXHIBITOR_KINDS,
+  INCLUSION_TIERS,
+  PAX_CONFIRMATIONS,
+  RELEASE_STATUSES,
+} from "./game";
 export type {
   AudienceTag,
   BusinessTag,

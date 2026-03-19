@@ -26,6 +26,25 @@ export const DISCOVERY_SOURCES = [
 ] as const;
 export type DiscoverySource = (typeof DISCOVERY_SOURCES)[number];
 
+export const INCLUSION_TIERS = ["confirmed", "high", "medium", "low"] as const;
+export type InclusionTier = (typeof INCLUSION_TIERS)[number];
+
+export const PAX_CONFIRMATIONS = ["explicit", "inferred", "none"] as const;
+export type PaxConfirmation = (typeof PAX_CONFIRMATIONS)[number];
+
+export const RELEASE_STATUSES = ["unreleased", "early_access", "released", "unknown"] as const;
+export type ReleaseStatus = (typeof RELEASE_STATUSES)[number];
+
+/** Evidence-based metadata attached to games discovered via web search (Tier 3). */
+export interface DiscoveryMeta {
+  inclusionTier: InclusionTier;
+  paxConfirmation: PaxConfirmation;
+  releaseStatus: ReleaseStatus;
+  releaseYear: number | null;
+  evidenceSummary: string;
+  evidenceUrls: string[];
+}
+
 // ---------------------------------------------------------------------------
 // Pipeline stage types — each step has typed inputs and outputs
 // ---------------------------------------------------------------------------
@@ -113,6 +132,8 @@ export interface HarmonizedGame {
   demoId: string | null;
   /** How this game was discovered. Null for demo-sourced games. */
   discoverySource: DiscoverySource | null;
+  /** Evidence metadata from Tier 3 web search discovery. Null for non-Tier-3 games. */
+  discoveryMeta?: DiscoveryMeta | null;
   lastScrapedAt: string;
 }
 

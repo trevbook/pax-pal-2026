@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { HarmonizedExhibitor, HarmonizedGame } from "@pax-pal/core";
+import type { DiscoveryMeta, HarmonizedExhibitor, HarmonizedGame } from "@pax-pal/core";
 import type { DiscoverOptions } from "./discover";
 import { discover } from "./discover";
 import type { DiscoveryResult, Tier1Signal } from "./types";
@@ -111,16 +111,18 @@ const fakeRunTier2WithWebSearch: DiscoverOptions["_runTier2"] = async (
   return { results, cachedCount: 0 };
 };
 
-/** Fake runTier3 that returns canned web search results. */
+/** Fake runTier3 that returns canned web search results with evidence metadata. */
 const fakeRunTier3: DiscoverOptions["_runTier3"] = async (eligibleIds: string[]) => {
   const results = new Map<string, DiscoveryResult>();
+  const evidenceByGame = new Map<string, DiscoveryMeta>();
   for (const id of eligibleIds) {
+    const gameName = "Web Found Game";
     results.set(id, {
       exhibitorId: id,
       exhibitorKind: "game_studio",
       games: [
         {
-          name: "Web Found Game",
+          name: gameName,
           source: "web_search",
           confidence: 0.85,
           type: "video_game",
@@ -130,8 +132,16 @@ const fakeRunTier3: DiscoverOptions["_runTier3"] = async (eligibleIds: string[])
       needsWebSearch: false,
       reasoning: "Found via web search",
     });
+    evidenceByGame.set(`${id}:${gameName}`, {
+      inclusionTier: "high",
+      paxConfirmation: "none",
+      releaseStatus: "unreleased",
+      releaseYear: 2026,
+      evidenceSummary: "Unreleased game from single-game studio",
+      evidenceUrls: ["https://example.com"],
+    });
   }
-  return { results, cachedCount: 0 };
+  return { results, evidenceByGame, cachedCount: 0 };
 };
 
 const opts: DiscoverOptions = { _runTier2: fakeRunTier2 };
@@ -288,5 +298,30 @@ describe("discover with tier3", () => {
     const discovered = result.games.filter((g) => g.exhibitorId === "2");
     expect(discovered).toHaveLength(1);
     expect(discovered[0].discoverySource).toBe("web_search");
+  });
+
+  it("attaches discoveryMeta to tier3-discovered games", async () => {
+    const exhibitor = makeExhibitor({ id: "1", demoCount: 0 });
+    const result = await discover([exhibitor], [], {
+      _runTier2: fakeRunTier2WithWebSearch,
+      _runTier3: fakeRunTier3,
+      webSearch: true,
+    });
+
+    const discovered = result.games.filter((g) => g.discoverySource === "web_search");
+    expect(discovered).toHaveLength(1);
+    expect(discovered[0].discoveryMeta).toBeTruthy();
+    expect(discovered[0].discoveryMeta?.inclusionTier).toBe("high");
+    expect(discovered[0].discoveryMeta?.releaseStatus).toBe("unreleased");
+    expect(discovered[0].discoveryMeta?.releaseYear).toBe(2026);
+  });
+
+  it("discoveryMeta is null for tier2-discovered games", async () => {
+    const exhibitor = makeExhibitor({ id: "1", demoCount: 0 });
+    const result = await discover([exhibitor], [], opts);
+
+    const discovered = result.games.filter((g) => g.discoverySource === "description_explicit");
+    expect(discovered).toHaveLength(1);
+    expect(discovered[0].discoveryMeta).toBeNull();
   });
 });

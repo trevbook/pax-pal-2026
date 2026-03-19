@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import type { HarmonizedExhibitor } from "@pax-pal/core";
-import type { DiscoveryResult } from "./types";
+import { computeInclusionTier } from "./tier3";
+import type { DiscoveryResult, GameEvidence } from "./types";
 
 const now = new Date().toISOString();
 
@@ -27,6 +28,24 @@ function makeExhibitor(overrides: Partial<HarmonizedExhibitor> = {}): Harmonized
   };
 }
 
+function makeGameEvidence(overrides: Partial<GameEvidence["evidence"]> = {}): GameEvidence {
+  return {
+    name: "Test Game",
+    type: "video_game",
+    evidence: {
+      paxConfirmation: "none",
+      isPrimaryGame: false,
+      exhibitorGameCount: 5,
+      releaseStatus: "released",
+      releaseYear: 2024,
+      sourceType: "steam",
+      summary: "Found on Steam",
+      urls: ["https://store.steampowered.com/app/12345"],
+      ...overrides,
+    },
+  };
+}
+
 /**
  * Helper to build a Tier 3 discovery result for testing.
  */
@@ -50,6 +69,89 @@ function makeTier3Result(
     ...overrides,
   };
 }
+
+describe("computeInclusionTier", () => {
+  it("returns 'confirmed' for explicit PAX East 2026 confirmation", () => {
+    const game = makeGameEvidence({ paxConfirmation: "explicit" });
+    expect(computeInclusionTier(game)).toBe("confirmed");
+  });
+
+  it("returns 'high' for single-game studio (isPrimaryGame + count <= 2)", () => {
+    const game = makeGameEvidence({ isPrimaryGame: true, exhibitorGameCount: 1 });
+    expect(computeInclusionTier(game)).toBe("high");
+  });
+
+  it("returns 'high' for two-game studio with primary game", () => {
+    const game = makeGameEvidence({ isPrimaryGame: true, exhibitorGameCount: 2 });
+    expect(computeInclusionTier(game)).toBe("high");
+  });
+
+  it("returns 'high' for unreleased game", () => {
+    const game = makeGameEvidence({ releaseStatus: "unreleased" });
+    expect(computeInclusionTier(game)).toBe("high");
+  });
+
+  it("returns 'high' for inferred PAX confirmation", () => {
+    const game = makeGameEvidence({ paxConfirmation: "inferred" });
+    expect(computeInclusionTier(game)).toBe("high");
+  });
+
+  it("returns 'medium' for early access game", () => {
+    const game = makeGameEvidence({ releaseStatus: "early_access" });
+    expect(computeInclusionTier(game)).toBe("medium");
+  });
+
+  it("returns 'medium' for game released in 2025", () => {
+    const game = makeGameEvidence({ releaseYear: 2025 });
+    expect(computeInclusionTier(game)).toBe("medium");
+  });
+
+  it("returns 'medium' for game released in 2026", () => {
+    const game = makeGameEvidence({ releaseYear: 2026 });
+    expect(computeInclusionTier(game)).toBe("medium");
+  });
+
+  it("returns 'low' for released 2024 game from large catalog", () => {
+    const game = makeGameEvidence({
+      releaseStatus: "released",
+      releaseYear: 2024,
+      exhibitorGameCount: 5,
+      isPrimaryGame: false,
+    });
+    expect(computeInclusionTier(game)).toBe("low");
+  });
+
+  it("returns 'low' for released 2023 game with no PAX signal", () => {
+    const game = makeGameEvidence({
+      releaseStatus: "released",
+      releaseYear: 2023,
+      paxConfirmation: "none",
+      isPrimaryGame: false,
+      exhibitorGameCount: 3,
+    });
+    expect(computeInclusionTier(game)).toBe("low");
+  });
+
+  it("confirmed takes priority over all other signals", () => {
+    const game = makeGameEvidence({
+      paxConfirmation: "explicit",
+      isPrimaryGame: true,
+      exhibitorGameCount: 1,
+      releaseStatus: "released",
+      releaseYear: 2020,
+    });
+    expect(computeInclusionTier(game)).toBe("confirmed");
+  });
+
+  it("high: unreleased beats medium: early_access", () => {
+    const game = makeGameEvidence({
+      releaseStatus: "unreleased",
+      isPrimaryGame: false,
+      exhibitorGameCount: 10,
+    });
+    expect(computeInclusionTier(game)).toBe("high");
+  });
+});
 
 describe("tier3 result shape", () => {
   it("builds result with web_search source on all games", () => {
