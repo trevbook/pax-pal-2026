@@ -16,7 +16,7 @@
 | 2.2 Harmonize | ✅ Complete | Exhibitors + games separated (see `harmonize-fix.md`) |
 | 2.3 Discover (Tier 1) | ✅ Complete | Structural deduction — booth sharing, skip detection, game-like names |
 | 2.3 Discover (Tier 2) | ✅ Complete | LLM classification via AI SDK v6 + gpt-5.4-mini |
-| 2.3 Discover (Tier 3) | 📋 Planned | Web search for remaining unknowns |
+| 2.3 Discover (Tier 3) | ✅ Complete | Web search agent via AI SDK v6 + OpenAI Responses API |
 | 2.4 Enrich | 📋 Planned | BGG + LLM enrichment |
 | 2.5 Classify | 📋 Planned | Taxonomy label assignment |
 | 2.6 Embed | 📋 Planned | Semantic search vectors |
@@ -403,6 +403,37 @@ packages/data-pipeline/src/discover/
 **Tier 2 batching:** 5 exhibitors per LLM call, sequential processing. System prompt includes 4 few-shot examples (game_studio, peripheral, publisher, agency).
 
 **Test count:** 33 new tests (16 tier1 + 9 tier2 + 8 discover). All 114 project tests pass.
+
+### Implementation notes (Tier 3 — completed 2026-03-18)
+
+**Approach:** Per-exhibitor web search agent using OpenAI Responses API built-in web search via AI SDK v6. Each exhibitor gets a multi-step `generateText` loop with `openai.tools.webSearch()` that searches for PAX East 2026 game announcements, then produces structured output via `Output.object()`.
+
+**Files created:**
+
+```
+packages/data-pipeline/src/discover/
+├── tier3.ts              # searchExhibitor (per-exhibitor agent), loadTier3Cache/saveToTier3Cache, runTier3
+└── tier3.test.ts         # 6 tests (result shape, formatting)
+```
+
+**Files modified:**
+
+- `packages/data-pipeline/src/discover/types.ts` — Added `"web_search"` to `discoveredGameSourceValues`; added `tier3Eligible`, `tier3Processed`, `tier3Cached` to `DiscoverStats`
+- `packages/data-pipeline/src/discover/discover.ts` — Added Tier 3 integration: `webSearch`, `tier3CacheDir`, `_runTier3` options; tier3 eligible = tier1 skipped + tier2 needsWebSearch; tier3 results replace tier2 for same exhibitor; updated `mapSource` and stats
+- `packages/data-pipeline/src/cli.ts` — Added `--web-search` flag; passes `tier3CacheDir` and `webSearch` to discover
+- `packages/data-pipeline/src/discover/discover.test.ts` — Added 3 tier3 integration tests (replace, skip, eligible)
+
+**No new dependencies.** Reuses existing `ai` + `@ai-sdk/openai`. Uses `model: "openai/gpt-5.4-mini"` (string format for Responses API compatibility).
+
+**Key design decisions:**
+
+- `stopWhen: stepCountIs(6)` — 5 search steps + 1 structured output step, targeting ~$0.10 max per exhibitor
+- `searchContextSize: "low"` — minimizes token cost per search
+- Concurrency: 2 workers (conservative for rate limits)
+- Caching: per-exhibitor at `miscellaneous/data/cache/discover/tier3/{exhibitorId}.json`; failures also cached to ensure idempotency
+- `--web-search` flag required to enable Tier 3 (Tier 1 + 2 run by default)
+
+**Test count:** 9 new tests (6 tier3 + 3 discover integration). All 123 project tests pass.
 
 ### Expected outcomes
 

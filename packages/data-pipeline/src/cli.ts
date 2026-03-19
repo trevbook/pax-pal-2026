@@ -111,7 +111,7 @@ async function runHarmonize() {
   console.log("[harmonize] Done.");
 }
 
-async function runDiscover(skipCache: boolean) {
+async function runDiscover(skipCache: boolean, webSearch: boolean, tier3Limit?: number) {
   console.log("\n[discover] Loading harmonized data...");
 
   const harmonizedDir = join(DATA_DIR, "02-harmonized");
@@ -125,7 +125,14 @@ async function runDiscover(skipCache: boolean) {
   const demoGames = allGames.filter((g: { demoId: string | null }) => g.demoId !== null);
 
   const cacheDir = join(DATA_DIR, "cache/discover/tier2");
-  const result = await discover(exhibitors, demoGames, { cacheDir, skipCache });
+  const tier3CacheDir = join(DATA_DIR, "cache/discover/tier3");
+  const result = await discover(exhibitors, demoGames, {
+    cacheDir,
+    tier3CacheDir,
+    skipCache,
+    webSearch,
+    tier3Limit,
+  });
 
   console.log(`  Total games (demo + discovered): ${result.games.length}`);
   console.log(`  Stats: ${JSON.stringify(result.stats)}`);
@@ -148,7 +155,9 @@ const STAGES = ["scrape", "harmonize", "discover", "all"] as const;
 type Stage = (typeof STAGES)[number];
 
 function printUsage() {
-  console.log("Usage: bun run src/cli.ts <stage> [--source local|live] [--skip-cache]");
+  console.log(
+    "Usage: bun run src/cli.ts <stage> [--source local|live] [--skip-cache] [--web-search] [--limit N]",
+  );
   console.log(`Stages: ${STAGES.join(", ")}`);
 }
 
@@ -164,6 +173,9 @@ async function main() {
   const sourceIdx = args.indexOf("--source");
   const source = sourceIdx >= 0 ? (args[sourceIdx + 1] as "local" | "live") : "local";
   const skipCache = args.includes("--skip-cache");
+  const webSearch = args.includes("--web-search");
+  const limitIdx = args.indexOf("--limit");
+  const tier3Limit = limitIdx >= 0 ? Number.parseInt(args[limitIdx + 1], 10) : undefined;
 
   if (stage === "scrape" || stage === "all") {
     await runScrape(source);
@@ -174,7 +186,7 @@ async function main() {
   }
 
   if (stage === "discover" || stage === "all") {
-    await runDiscover(skipCache);
+    await runDiscover(skipCache, webSearch, tier3Limit);
   }
 
   console.log("\nPipeline complete.");

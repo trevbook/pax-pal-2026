@@ -89,6 +89,51 @@ const fakeRunTier2: DiscoverOptions["_runTier2"] = async (
   return { results, cachedCount: 0 };
 };
 
+/** Fake runTier2 that marks an exhibitor as needing web search. */
+const fakeRunTier2WithWebSearch: DiscoverOptions["_runTier2"] = async (
+  forTier2Ids: string[],
+  _allExhibitors: HarmonizedExhibitor[],
+  _signals: Map<string, Tier1Signal>,
+) => {
+  const results = new Map<string, DiscoveryResult>();
+  for (const id of forTier2Ids) {
+    if (id === "1") {
+      results.set(id, {
+        exhibitorId: id,
+        exhibitorKind: "publisher",
+        games: [],
+        confidence: 0.5,
+        needsWebSearch: true,
+        reasoning: "No specific titles, needs web search",
+      });
+    }
+  }
+  return { results, cachedCount: 0 };
+};
+
+/** Fake runTier3 that returns canned web search results. */
+const fakeRunTier3: DiscoverOptions["_runTier3"] = async (eligibleIds: string[]) => {
+  const results = new Map<string, DiscoveryResult>();
+  for (const id of eligibleIds) {
+    results.set(id, {
+      exhibitorId: id,
+      exhibitorKind: "game_studio",
+      games: [
+        {
+          name: "Web Found Game",
+          source: "web_search",
+          confidence: 0.85,
+          type: "video_game",
+        },
+      ],
+      confidence: 0.85,
+      needsWebSearch: false,
+      reasoning: "Found via web search",
+    });
+  }
+  return { results, cachedCount: 0 };
+};
+
 const opts: DiscoverOptions = { _runTier2: fakeRunTier2 };
 
 describe("discover", () => {
@@ -191,5 +236,57 @@ describe("discover", () => {
     expect(discovered?.boothLocation).toBe("12345");
     expect(discovered?.paxTags).toEqual(["RPG", "Indie"]);
     expect(discovered?.demoId).toBeNull();
+  });
+});
+
+describe("discover with tier3", () => {
+  it("tier3 results replace tier2 results when webSearch is enabled", async () => {
+    const exhibitor = makeExhibitor({ id: "1", demoCount: 0 });
+    const result = await discover([exhibitor], [], {
+      _runTier2: fakeRunTier2WithWebSearch,
+      _runTier3: fakeRunTier3,
+      webSearch: true,
+    });
+
+    const discovered = result.games.filter((g) => g.id.startsWith("discovered:"));
+    expect(discovered).toHaveLength(1);
+    expect(discovered[0].name).toBe("Web Found Game");
+    expect(discovered[0].discoverySource).toBe("web_search");
+  });
+
+  it("tier3 is skipped when webSearch is false", async () => {
+    const exhibitor = makeExhibitor({ id: "1", demoCount: 0 });
+    const result = await discover([exhibitor], [], {
+      _runTier2: fakeRunTier2WithWebSearch,
+      _runTier3: fakeRunTier3,
+      webSearch: false,
+    });
+
+    expect(result.stats.tier3Processed).toBe(0);
+    expect(result.stats.tier3Cached).toBe(0);
+    expect(result.stats.tier3Eligible).toBe(1);
+    // No web_search games since tier3 didn't run
+    const webGames = result.games.filter((g) => g.discoverySource === "web_search");
+    expect(webGames).toHaveLength(0);
+  });
+
+  it("tier1-skipped exhibitors appear in tier3 eligible list", async () => {
+    const noData = makeExhibitor({
+      id: "2",
+      description: null,
+      website: null,
+      demoCount: 0,
+    });
+    const result = await discover([noData], [], {
+      _runTier2: fakeRunTier2WithWebSearch,
+      _runTier3: fakeRunTier3,
+      webSearch: true,
+    });
+
+    // Exhibitor "2" was skipped by tier1 (no data) and should be tier3 eligible
+    expect(result.stats.tier3Eligible).toBeGreaterThanOrEqual(1);
+    const discovered = result.games.filter((g) => g.exhibitorId === "2");
+    expect(discovered).toHaveLength(1);
+    expect(discovered[0].discoverySource).toBe("web_search");
   });
 });

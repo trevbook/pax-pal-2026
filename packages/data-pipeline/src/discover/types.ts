@@ -36,6 +36,7 @@ const discoveredGameSourceValues = [
   "description_inferred",
   "name_is_game",
   "bgg_match",
+  "web_search",
 ] as const;
 
 export const discoveredGameSchema = z.object({
@@ -71,5 +72,8 @@ export interface DiscoverStats {
   tier1Umbrellas: number;
   tier2Processed: number;
   tier2Cached: number;
+  tier3Eligible: number;
+  tier3Processed: number;
+  tier3Cached: number;
   gamesDiscovered: number;
 }
