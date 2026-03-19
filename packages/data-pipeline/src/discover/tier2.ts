@@ -13,9 +13,27 @@ import { batchResultSchema } from "./types";
 
 const SYSTEM_PROMPT = `You are classifying exhibitors at PAX East 2026. For each exhibitor, determine:
 1. What kind of entity they are
-2. What specific games they might be showing (extract from description or infer from context)
+2. What specific games they are DEMOING AT PAX EAST (not their full catalog)
 3. Your confidence level (0.0–1.0)
 4. Whether a web search would help find more information
+
+## CRITICAL: Only extract games being shown at PAX East
+
+Your job is NOT to list every game a company has ever made. You must ONLY extract games that the description indicates will be PLAYABLE or DEMOED at PAX East 2026.
+
+Signs a game IS being shown at PAX East:
+- "Come play [game]", "demo [game]", "try [game] at our booth"
+- The entire description is about one game (the exhibitor exists to show that game)
+- For small indie studios with one game: if the description is entirely about that game, it's safe to assume they're showing it
+- For tabletop publishers: if they describe specific games they're bringing or demoing
+
+Signs a game is NOT necessarily being shown (DO NOT extract these):
+- A list of past titles or "credits" (e.g. "Titles include X, Y, Z" or "known for X, Y, Z")
+- Company bio listing their portfolio or history
+- Collaborations or past work mentioned for credibility
+- Games listed alongside phrases like "known for", "titles include", "collaborations include"
+
+When in doubt, set needsWebSearch: true and return games: []. Tier 3 web search will determine what's actually at PAX East.
 
 ## Classification categories
 
@@ -30,29 +48,31 @@ const SYSTEM_PROMPT = `You are classifying exhibitors at PAX East 2026. For each
 
 ## Game extraction sources
 
-- "description_explicit": A game name is directly stated in the description (e.g. "Come play Terra Nova: Legend of the Runes").
-- "description_inferred": Description strongly implies a specific game but doesn't name it directly (e.g. website domain is the game name).
-- "name_is_game": The exhibitor's name IS the game (common for indie studios showing a single title).
+- "description_explicit": A game is clearly being shown/demoed at PAX East based on the description (e.g. "Come play Terra Nova: Legend of the Runes at our booth").
+- "description_inferred": Description strongly implies a specific game is being shown but doesn't say so directly (e.g. the entire description is about one game for a single-game indie studio).
+- "name_is_game": The exhibitor's name IS the game AND the description is about that game (common for indie studios showing a single title).
 - "bgg_match": Exhibitor name matches a known board game (for tabletop exhibitors).
 
 ## Guidelines
 
+- BE CONSERVATIVE. Only extract games you are confident are being shown at PAX East.
 - Prefer needsWebSearch: true over low-confidence guesses.
+- If a description reads like a company bio listing their portfolio, return games: [] and set needsWebSearch: true.
 - For agencies/peripherals/media/community: always return games: [].
-- If the exhibitor name looks like a game title (nameIsGame signal is true) and no other game is mentioned, consider using source "name_is_game".
+- If the exhibitor name looks like a game title (nameIsGame signal is true) and the description is about that game, use source "name_is_game".
 - If likelyUmbrella is true, the exhibitor probably represents other studios — lean toward "agency" or "publisher".
-- For tabletop exhibitors: if description mentions a specific board/card game, extract it.
+- For tabletop exhibitors: if description mentions specific games they are bringing/demoing, extract them.
 
 ## Examples
 
 Exhibitor: { name: "9th Bit Games", description: "Terra Nova: Legend of the Runes is a modern love letter to classic turn-based RPGs...", isTabletop: false }
-Result: { exhibitorKind: "game_studio", games: [{ name: "Terra Nova: Legend of the Runes", source: "description_explicit", confidence: 0.95, type: "video_game" }], confidence: 0.95, needsWebSearch: false, reasoning: "Game name explicitly stated in description" }
+Result: { exhibitorKind: "game_studio", games: [{ name: "Terra Nova: Legend of the Runes", source: "description_explicit", confidence: 0.95, type: "video_game" }], confidence: 0.95, needsWebSearch: false, reasoning: "Single-game indie studio; entire description is about this game, clearly being shown at PAX" }
 
 Exhibitor: { name: "Zenni", description: "Zenni is the world's leading online eyewear retailer...", isTabletop: false }
 Result: { exhibitorKind: "peripheral", games: [], confidence: 0.95, needsWebSearch: false, reasoning: "Eyewear retailer, not a game company" }
 
-Exhibitor: { name: "IllFonic", description: "IllFonic is a game development studio known for...", isTabletop: false }
-Result: { exhibitorKind: "publisher", games: [], confidence: 0.5, needsWebSearch: true, reasoning: "Game studio but no specific PAX East titles mentioned in description" }
+Exhibitor: { name: "IllFonic Inc.", description: "Founded in 2007, IllFonic is an independent video game developer and publisher... Titles and collaborations include Halloween, Killer Klowns From Outer Space: The Game, Ghostbusters: Spirits Unleashed, Arcadegeddon, Predator: Hunting Grounds, Friday the 13th: The Game...", isTabletop: false }
+Result: { exhibitorKind: "game_studio", games: [], confidence: 0.98, needsWebSearch: true, reasoning: "Game studio with large portfolio, but description is a company bio listing past titles — no indication of which games are being demoed at PAX East" }
 
 Exhibitor: { name: "Ukiyo Studios", description: "PR and marketing agency representing indie developers...", isTabletop: false, likelyUmbrella: true }
 Result: { exhibitorKind: "agency", games: [], confidence: 0.9, needsWebSearch: false, reasoning: "PR/marketing agency, developers are separate exhibitors" }`;
