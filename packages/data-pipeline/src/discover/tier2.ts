@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { openai } from "@ai-sdk/openai";
 import type { HarmonizedExhibitor } from "@pax-pal/core";
 import { generateObject } from "ai";
+import cliProgress from "cli-progress";
 import type { DiscoveryResult, Tier1Signal } from "./types";
 import { batchResultSchema } from "./types";
 
@@ -146,6 +147,7 @@ export async function saveToCache(cacheDir: string, result: DiscoveryResult): Pr
 
 export interface Tier2Options {
   batchSize?: number;
+  concurrency?: number;
   cacheDir?: string;
   skipCache?: boolean;
 }
@@ -159,7 +161,7 @@ export async function runTier2(
   signals: Map<string, Tier1Signal>,
   options: Tier2Options = {},
 ): Promise<{ results: Map<string, DiscoveryResult>; cachedCount: number }> {
-  const { batchSize = 5, cacheDir, skipCache = false } = options;
+  const { batchSize = 5, concurrency = 4, cacheDir, skipCache = false } = options;
 
   const exhibitorMap = new Map(allExhibitors.map((ex) => [ex.id, ex]));
 
@@ -192,22 +194,38 @@ export async function runTier2(
     if (batch.length > 0) batches.push(batch);
   }
 
-  // Process batches sequentially
-  for (let i = 0; i < batches.length; i++) {
-    const batch = batches[i];
-    console.log(
-      `[tier2] Batch ${i + 1}/${batches.length}: classifying ${batch.length} exhibitors...`,
-    );
+  // Process batches with bounded concurrency
+  const bar = new cliProgress.SingleBar(
+    {
+      format: "[tier2] {bar} {percentage}% | {value}/{total} batches | ETA: {eta_formatted}",
+      hideCursor: true,
+    },
+    cliProgress.Presets.shades_classic,
+  );
+  bar.start(batches.length, 0);
 
-    const batchResults = await classifyBatch(batch);
+  let nextIndex = 0;
 
-    for (const result of batchResults) {
-      results.set(result.exhibitorId, result);
-      if (cacheDir) {
-        await saveToCache(cacheDir, result);
+  async function processBatch(): Promise<void> {
+    while (nextIndex < batches.length) {
+      const i = nextIndex++;
+      const batchResults = await classifyBatch(batches[i]);
+
+      for (const result of batchResults) {
+        results.set(result.exhibitorId, result);
+        if (cacheDir) {
+          await saveToCache(cacheDir, result);
+        }
       }
+      bar.increment();
     }
   }
+
+  const workers = Array.from({ length: Math.min(concurrency, batches.length) }, () =>
+    processBatch(),
+  );
+  await Promise.all(workers);
+  bar.stop();
 
   return { results, cachedCount: cached.size };
 }
