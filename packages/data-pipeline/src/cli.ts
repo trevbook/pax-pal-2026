@@ -115,13 +115,17 @@ async function runDiscover(skipCache: boolean) {
   console.log("\n[discover] Loading harmonized data...");
 
   const harmonizedDir = join(DATA_DIR, "02-harmonized");
-  const [exhibitors, games] = await Promise.all([
+  const [exhibitors, allGames] = await Promise.all([
     Bun.file(join(harmonizedDir, "exhibitors.json")).json(),
     Bun.file(join(harmonizedDir, "games.json")).json(),
   ]);
 
+  // Only pass demo-sourced games to discover — previously discovered games
+  // are rebuilt fresh each run, so including them would cause duplicates.
+  const demoGames = allGames.filter((g: { demoId: string | null }) => g.demoId !== null);
+
   const cacheDir = join(DATA_DIR, "cache/discover/tier2");
-  const result = await discover(exhibitors, games, { cacheDir, skipCache });
+  const result = await discover(exhibitors, demoGames, { cacheDir, skipCache });
 
   console.log(`  Total games (demo + discovered): ${result.games.length}`);
   console.log(`  Stats: ${JSON.stringify(result.stats)}`);
