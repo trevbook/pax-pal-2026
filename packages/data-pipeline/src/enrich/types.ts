@@ -99,7 +99,10 @@ export interface SteamEnrichment {
   genres: string[];
   categories: string[];
   releaseDate: string | null;
+  /** Metacritic score (0–100), if available. */
   reviewScore: number | null;
+  /** Total Steam user recommendations count. */
+  recommendationCount: number | null;
   platforms: { windows: boolean; mac: boolean; linux: boolean };
 }
 

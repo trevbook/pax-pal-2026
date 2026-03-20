@@ -26,6 +26,13 @@ bun run src/cli.ts harmonize
 bun run src/cli.ts scrape --source live
 ```
 
+## Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `OPENAI_API_KEY` | Enrich (web) | OpenAI API key for web search enrichment |
+| `BGG_API_TOKEN` | Enrich (BGG) | Bearer token from a registered BGG application. Register at https://boardgamegeek.com/applications |
+
 ## Output
 
 All intermediate data written to `miscellaneous/data/`.

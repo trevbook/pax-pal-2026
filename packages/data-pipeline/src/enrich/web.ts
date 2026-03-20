@@ -56,7 +56,11 @@ For ALL games, try to find:
 - For URLs, only include ones you've actually found in search results
 - If you can't find certain fields, return null for those fields
 - Be especially careful with image URLs — only use ones from official sources
-- For pressLinks, prefer recent articles (2024-2026)`;
+- For pressLinks, prefer recent articles (2024-2026)
+- Do NOT fabricate or guess URLs. If you cannot find an actual screenshot URL from search results, return an empty array. Never construct URLs by guessing hash patterns (e.g., Steam CDN paths with hex hashes).
+- For socialLinks, do NOT use Steam community links or steamcommunity.com/linkfilter wrapper URLs. Each field must point to the game's actual profile on that platform. If you can't find it, return null.
+- Write summary and description as plain text. Do not include markdown links, citations, source annotations, or reference markers like ([source](url)). URLs belong in pressLinks/socialLinks, not inline in descriptions.
+- For pressLinks, only include editorial content (reviews, previews, interviews, announcements from journalists). Do NOT include store pages (Steam, Epic, itch.io, retail shops), database/tracker pages (SteamDB, HowLongToBeat), or the developer's own store listings.`;
 
 // ---------------------------------------------------------------------------
 // Per-game web search

@@ -1,8 +1,15 @@
 import { describe, expect, it } from "bun:test";
 import type { HarmonizedGame } from "@pax-pal/core";
 import type { EnrichOptions } from "./enrich";
-import { enrich, scrubBareSocialLink } from "./enrich";
-import type { BggEnrichment, WebEnrichment } from "./types";
+import {
+  enrich,
+  isStorePage,
+  scrubBareSocialLink,
+  stripCitations,
+  unwrapSteamLinkfilter,
+  validateSocialDomain,
+} from "./enrich";
+import type { BggEnrichment, SteamEnrichment, WebEnrichment } from "./types";
 
 const now = new Date().toISOString();
 
@@ -81,6 +88,7 @@ const fakeSteamResult: SteamEnrichment = {
   categories: ["Single-player"],
   releaseDate: "Coming Soon",
   reviewScore: null,
+  recommendationCount: null,
   platforms: { windows: true, mac: false, linux: false },
 };
 
@@ -354,6 +362,10 @@ describe("scrubBareSocialLink", () => {
     expect(scrubBareSocialLink("https://youtube.com/")).toBeNull();
   });
 
+  it("returns null for bare domains with multiple trailing slashes", () => {
+    expect(scrubBareSocialLink("https://discord.gg//")).toBeNull();
+  });
+
   it("preserves full profile URLs", () => {
     expect(scrubBareSocialLink("https://x.com/StudioName")).toBe("https://x.com/StudioName");
     expect(scrubBareSocialLink("https://discord.gg/abcdef")).toBe("https://discord.gg/abcdef");
@@ -365,5 +377,250 @@ describe("scrubBareSocialLink", () => {
 
   it("returns null for null input", () => {
     expect(scrubBareSocialLink(null)).toBeNull();
+  });
+});
+
+describe("unwrapSteamLinkfilter", () => {
+  it("extracts inner URL from https linkfilter wrapper", () => {
+    expect(
+      unwrapSteamLinkfilter(
+        "https://steamcommunity.com/linkfilter/?url=https://twitter.com/Studio",
+      ),
+    ).toBe("https://twitter.com/Studio");
+  });
+
+  it("extracts inner URL from http linkfilter wrapper", () => {
+    expect(
+      unwrapSteamLinkfilter("http://steamcommunity.com/linkfilter/?url=https://discord.gg/abc"),
+    ).toBe("https://discord.gg/abc");
+  });
+
+  it("decodes percent-encoded inner URLs", () => {
+    expect(
+      unwrapSteamLinkfilter(
+        "https://steamcommunity.com/linkfilter/?url=https%3A%2F%2Ftwitter.com%2FStudio",
+      ),
+    ).toBe("https://twitter.com/Studio");
+  });
+
+  it("returns non-linkfilter URLs unchanged", () => {
+    expect(unwrapSteamLinkfilter("https://x.com/StudioName")).toBe("https://x.com/StudioName");
+  });
+});
+
+describe("validateSocialDomain", () => {
+  it("accepts twitter.com and x.com for twitter field", () => {
+    expect(validateSocialDomain("twitter", "https://x.com/Studio")).toBe("https://x.com/Studio");
+    expect(validateSocialDomain("twitter", "https://twitter.com/Studio")).toBe(
+      "https://twitter.com/Studio",
+    );
+  });
+
+  it("rejects non-twitter domains for twitter field", () => {
+    expect(validateSocialDomain("twitter", "https://steamcommunity.com/foo")).toBeNull();
+  });
+
+  it("accepts discord.gg and discord.com for discord field", () => {
+    expect(validateSocialDomain("discord", "https://discord.gg/abc")).toBe(
+      "https://discord.gg/abc",
+    );
+    expect(validateSocialDomain("discord", "https://discord.com/invite/abc")).toBe(
+      "https://discord.com/invite/abc",
+    );
+  });
+
+  it("rejects non-discord domains for discord field", () => {
+    expect(validateSocialDomain("discord", "https://steamcommunity.com/app/123")).toBeNull();
+  });
+
+  it("accepts youtube.com and youtu.be for youtube field", () => {
+    expect(validateSocialDomain("youtube", "https://www.youtube.com/@Channel")).toBe(
+      "https://www.youtube.com/@Channel",
+    );
+    expect(validateSocialDomain("youtube", "https://youtu.be/abc123")).toBe(
+      "https://youtu.be/abc123",
+    );
+  });
+
+  it("accepts itch.io subdomains for itchIo field", () => {
+    expect(validateSocialDomain("itchIo", "https://studio.itch.io/game")).toBe(
+      "https://studio.itch.io/game",
+    );
+  });
+
+  it("returns null for null input", () => {
+    expect(validateSocialDomain("twitter", null)).toBeNull();
+  });
+});
+
+describe("stripCitations", () => {
+  it("strips ([source](url)) citation patterns", () => {
+    expect(stripCitations("Great game. ([PC Gamer](https://pcgamer.com/review))")).toBe(
+      "Great game.",
+    );
+  });
+
+  it("converts [text](url) markdown links to plain text", () => {
+    expect(stripCitations("See [this review](https://example.com) for more")).toBe(
+      "See this review for more",
+    );
+  });
+
+  it("strips ?utm_source=openai tracking params", () => {
+    expect(stripCitations("Visit https://store.steampowered.com/app/123?utm_source=openai")).toBe(
+      "Visit https://store.steampowered.com/app/123",
+    );
+  });
+
+  it("handles multiple citations in one string", () => {
+    const input = "A game ([A](https://a.com)) about stuff ([B](https://b.com)) and things.";
+    expect(stripCitations(input)).toBe("A game about stuff and things.");
+  });
+
+  it("collapses multiple spaces after stripping", () => {
+    expect(stripCitations("Great  game   here")).toBe("Great game here");
+  });
+
+  it("returns null for null input", () => {
+    expect(stripCitations(null)).toBeNull();
+  });
+});
+
+describe("isStorePage", () => {
+  it("identifies Steam store pages", () => {
+    expect(isStorePage("https://store.steampowered.com/app/12345/Game")).toBe(true);
+  });
+
+  it("identifies SteamDB pages", () => {
+    expect(isStorePage("https://steamdb.info/app/12345")).toBe(true);
+  });
+
+  it("identifies retail store pages", () => {
+    expect(isStorePage("https://www.gamenerdz.com/some-game")).toBe(true);
+    expect(isStorePage("https://www.nobleknight.com/some-game")).toBe(true);
+    expect(isStorePage("https://www.amazon.com/dp/B08123")).toBe(true);
+  });
+
+  it("does not flag editorial sites", () => {
+    expect(isStorePage("https://www.pcgamer.com/review")).toBe(false);
+    expect(isStorePage("https://kotaku.com/article")).toBe(false);
+  });
+
+  it("returns false for invalid URLs", () => {
+    expect(isStorePage("not-a-url")).toBe(false);
+  });
+});
+
+describe("enrich orchestrator — scrubbing integration", () => {
+  it("strips Steam linkfilter wrappers from social links", async () => {
+    const fakeWebWithLinkfilter: WebEnrichment = {
+      ...fakeWebResult,
+      socialLinks: {
+        twitter: "https://steamcommunity.com/linkfilter/?url=https://twitter.com/StudioName",
+        discord: "https://steamcommunity.com/linkfilter/?url=https://discord.gg/abc",
+        youtube: null,
+        itchIo: null,
+      },
+    };
+
+    const result = await enrich([makeGame({ id: "v1", type: "video_game" })], {
+      ...opts,
+      _runWeb: async (games) => {
+        const results = new Map<string, WebEnrichment | null>();
+        for (const g of games) results.set(g.id, fakeWebWithLinkfilter);
+        return { results, cachedCount: 0 };
+      },
+    });
+
+    const meta = result.enrichmentMeta.find((m) => m.gameId === "v1");
+    expect(meta?.web?.socialLinks.twitter).toBe("https://twitter.com/StudioName");
+    expect(meta?.web?.socialLinks.discord).toBe("https://discord.gg/abc");
+  });
+
+  it("nulls out wrong-domain social links", async () => {
+    const fakeWebWithWrongDomains: WebEnrichment = {
+      ...fakeWebResult,
+      socialLinks: {
+        twitter: "https://x.com/StudioName",
+        discord: "https://steamcommunity.com/app/2692620",
+        youtube: "https://www.youtube.com",
+        itchIo: null,
+      },
+    };
+
+    const result = await enrich([makeGame({ id: "v1", type: "video_game" })], {
+      ...opts,
+      _runWeb: async (games) => {
+        const results = new Map<string, WebEnrichment | null>();
+        for (const g of games) results.set(g.id, fakeWebWithWrongDomains);
+        return { results, cachedCount: 0 };
+      },
+    });
+
+    const meta = result.enrichmentMeta.find((m) => m.gameId === "v1");
+    expect(meta?.web?.socialLinks.twitter).toBe("https://x.com/StudioName");
+    expect(meta?.web?.socialLinks.discord).toBeNull(); // wrong domain
+    expect(meta?.web?.socialLinks.youtube).toBeNull(); // bare domain
+  });
+
+  it("strips markdown citations from summary and description", async () => {
+    const fakeWebWithCitations: WebEnrichment = {
+      ...fakeWebResult,
+      summary:
+        "A great game. ([store.steampowered.com](https://store.steampowered.com/app/123?utm_source=openai))",
+      description: "See [the review](https://example.com) for details.",
+    };
+
+    const result = await enrich([makeGame({ id: "v1", type: "video_game" })], {
+      ...opts,
+      _runWeb: async (games) => {
+        const results = new Map<string, WebEnrichment | null>();
+        for (const g of games) results.set(g.id, fakeWebWithCitations);
+        return { results, cachedCount: 0 };
+      },
+    });
+
+    const meta = result.enrichmentMeta.find((m) => m.gameId === "v1");
+    expect(meta?.web?.summary).toBe("A great game.");
+    expect(meta?.web?.description).toBe("See the review for details.");
+  });
+
+  it("filters store pages from pressLinks", async () => {
+    const fakeWebWithStorePress: WebEnrichment = {
+      ...fakeWebResult,
+      pressLinks: [
+        {
+          url: "https://www.pcgamer.com/review",
+          title: "Review",
+          source: "PC Gamer",
+          type: "review",
+        },
+        {
+          url: "https://store.steampowered.com/app/12345",
+          title: "Steam",
+          source: "Steam",
+          type: "other",
+        },
+        {
+          url: "https://www.gamenerdz.com/game",
+          title: "Buy",
+          source: "Game Nerdz",
+          type: "other",
+        },
+      ],
+    };
+
+    const result = await enrich([makeGame({ id: "v1", type: "video_game" })], {
+      ...opts,
+      _runWeb: async (games) => {
+        const results = new Map<string, WebEnrichment | null>();
+        for (const g of games) results.set(g.id, fakeWebWithStorePress);
+        return { results, cachedCount: 0 };
+      },
+    });
+
+    const meta = result.enrichmentMeta.find((m) => m.gameId === "v1");
+    expect(meta?.web?.pressLinks).toHaveLength(1);
+    expect(meta?.web?.pressLinks[0].source).toBe("PC Gamer");
   });
 });

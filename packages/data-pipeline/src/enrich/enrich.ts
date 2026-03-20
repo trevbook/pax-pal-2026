@@ -45,38 +45,53 @@ export interface EnrichResult {
 // URL collection helpers
 // ---------------------------------------------------------------------------
 
+interface CollectedUrls {
+  all: string[];
+  imageUrls: Set<string>;
+}
+
 function collectUrls(
   bggResults: Map<string, BggEnrichment | null>,
   webResults: Map<string, WebEnrichment | null>,
   steamResults: Map<string, SteamEnrichment | null>,
-): string[] {
-  const urls: string[] = [];
+): CollectedUrls {
+  const all: string[] = [];
+  const imageUrls = new Set<string>();
 
   for (const bgg of bggResults.values()) {
-    if (bgg?.imageUrl) urls.push(bgg.imageUrl);
+    if (bgg?.imageUrl) {
+      all.push(bgg.imageUrl);
+      imageUrls.add(bgg.imageUrl);
+    }
   }
 
   for (const web of webResults.values()) {
     if (!web) continue;
-    if (web.imageUrl) urls.push(web.imageUrl);
-    if (web.steamUrl) urls.push(web.steamUrl);
-    if (web.trailerUrl) urls.push(web.trailerUrl);
-    for (const s of web.screenshotUrls) urls.push(s);
-    for (const p of web.pressLinks) urls.push(p.url);
-    if (web.socialLinks.twitter) urls.push(web.socialLinks.twitter);
-    if (web.socialLinks.discord) urls.push(web.socialLinks.discord);
-    if (web.socialLinks.youtube) urls.push(web.socialLinks.youtube);
-    if (web.socialLinks.itchIo) urls.push(web.socialLinks.itchIo);
+    if (web.imageUrl) {
+      all.push(web.imageUrl);
+      imageUrls.add(web.imageUrl);
+    }
+    if (web.steamUrl) all.push(web.steamUrl);
+    if (web.trailerUrl) all.push(web.trailerUrl);
+    for (const s of web.screenshotUrls) all.push(s);
+    for (const p of web.pressLinks) all.push(p.url);
+    if (web.socialLinks.twitter) all.push(web.socialLinks.twitter);
+    if (web.socialLinks.discord) all.push(web.socialLinks.discord);
+    if (web.socialLinks.youtube) all.push(web.socialLinks.youtube);
+    if (web.socialLinks.itchIo) all.push(web.socialLinks.itchIo);
   }
 
   for (const steam of steamResults.values()) {
     if (!steam) continue;
-    if (steam.headerImage) urls.push(steam.headerImage);
-    for (const s of steam.screenshots) urls.push(s);
-    for (const m of steam.movies) urls.push(m);
+    if (steam.headerImage) {
+      all.push(steam.headerImage);
+      imageUrls.add(steam.headerImage);
+    }
+    for (const s of steam.screenshots) all.push(s);
+    for (const m of steam.movies) all.push(m);
   }
 
-  return urls;
+  return { all, imageUrls };
 }
 
 // ---------------------------------------------------------------------------
@@ -89,46 +104,153 @@ function isValid(url: string | null, invalidUrls: Set<string>): string | null {
 }
 
 /**
- * Bare-domain social links (e.g. "https://x.com", "https://discord.gg") are
- * useless — the LLM couldn't find an actual profile URL. Null them out.
+ * Strip markdown citation artifacts and OpenAI utm params from text fields.
+ * e.g. "Great game. ([PC Gamer](https://pcgamer.com/review))" → "Great game."
  */
-const BARE_SOCIAL_DOMAINS = new Set([
-  "https://x.com",
-  "https://x.com/",
-  "https://twitter.com",
-  "https://twitter.com/",
-  "https://www.twitter.com",
-  "https://www.twitter.com/",
-  "https://discord.gg",
-  "https://discord.gg/",
-  "https://discord.com",
-  "https://discord.com/",
-  "https://www.youtube.com",
-  "https://www.youtube.com/",
-  "https://youtube.com",
-  "https://youtube.com/",
-  "https://itch.io",
-  "https://itch.io/",
+export function stripCitations(text: string | null): string | null {
+  if (!text) return null;
+  return text
+    .replace(/\(\[.*?\]\(https?:\/\/.*?\)\)/g, "") // ([source](url)) citations
+    .replace(/\[([^\]]+)\]\(https?:\/\/[^)]+\)/g, "$1") // [text](url) → text
+    .replace(/\?utm_source=openai/g, "") // OpenAI tracking params
+    .replace(/\s{2,}/g, " ") // collapse multiple spaces
+    .trim();
+}
+
+/**
+ * Strip Steam linkfilter wrapper URLs, returning the inner URL.
+ * e.g. "https://steamcommunity.com/linkfilter/?url=https://twitter.com/Studio" → "https://twitter.com/Studio"
+ */
+export function unwrapSteamLinkfilter(url: string): string {
+  for (const prefix of [
+    "https://steamcommunity.com/linkfilter/?url=",
+    "http://steamcommunity.com/linkfilter/?url=",
+  ]) {
+    if (url.startsWith(prefix)) {
+      return decodeURIComponent(url.slice(prefix.length));
+    }
+  }
+  return url;
+}
+
+/**
+ * Bare-domain social links (e.g. "https://x.com", "https://discord.gg/") are
+ * useless — the LLM couldn't find an actual profile URL. Null them out.
+ * Uses URL parsing so trailing-slash variants are handled automatically.
+ */
+const BARE_SOCIAL_HOSTNAMES = new Set([
+  "x.com",
+  "twitter.com",
+  "www.twitter.com",
+  "discord.gg",
+  "discord.com",
+  "www.youtube.com",
+  "youtube.com",
+  "youtu.be",
+  "itch.io",
 ]);
 
 export function scrubBareSocialLink(url: string | null): string | null {
   if (!url) return null;
-  return BARE_SOCIAL_DOMAINS.has(url) ? null : url;
+  try {
+    const parsed = new URL(url);
+    const pathname = parsed.pathname.replace(/\/+$/, "");
+    if (BARE_SOCIAL_HOSTNAMES.has(parsed.hostname) && pathname === "") {
+      return null;
+    }
+    return url;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Validate that a social link points to the correct platform.
+ * e.g. a "twitter" field must point to x.com or twitter.com, not steamcommunity.com.
+ */
+const SOCIAL_DOMAIN_MAP: Record<string, string[]> = {
+  twitter: ["x.com", "twitter.com"],
+  discord: ["discord.gg", "discord.com"],
+  youtube: ["youtube.com", "youtu.be"],
+  itchIo: ["itch.io"],
+};
+
+export function validateSocialDomain(
+  field: keyof typeof SOCIAL_DOMAIN_MAP,
+  url: string | null,
+): string | null {
+  if (!url) return null;
+  try {
+    const hostname = new URL(url).hostname.replace(/^www\./, "");
+    const allowed = SOCIAL_DOMAIN_MAP[field];
+    if (!allowed) return url;
+    return allowed.some((d) => hostname === d || hostname.endsWith(`.${d}`)) ? url : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Filter out store/retail/database pages from pressLinks.
+ * These are not editorial content (reviews, previews, interviews).
+ */
+const PRESS_LINK_BLOCKLIST = new Set([
+  "store.steampowered.com",
+  "steamdb.info",
+  "store.epicgames.com",
+  "gamenerdz.com",
+  "www.gamenerdz.com",
+  "nobleknight.com",
+  "www.nobleknight.com",
+  "cardhaus.com",
+  "www.cardhaus.com",
+  "boardgameprices.com",
+  "www.boardgameprices.com",
+  "amazon.com",
+  "www.amazon.com",
+  "gog.com",
+  "www.gog.com",
+]);
+
+export function isStorePage(url: string): boolean {
+  try {
+    return PRESS_LINK_BLOCKLIST.has(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Scrub a single social link through the full pipeline:
+ * unwrap linkfilter → check validity → strip bare domains → validate correct platform.
+ */
+function scrubSocialLink(
+  field: keyof typeof SOCIAL_DOMAIN_MAP,
+  url: string | null,
+  invalidUrls: Set<string>,
+): string | null {
+  if (!url) return null;
+  const unwrapped = unwrapSteamLinkfilter(url);
+  return validateSocialDomain(field, scrubBareSocialLink(isValid(unwrapped, invalidUrls)));
 }
 
 function scrubWebEnrichment(web: WebEnrichment, invalidUrls: Set<string>): WebEnrichment {
   return {
     ...web,
+    summary: stripCitations(web.summary),
+    description: stripCitations(web.description),
     imageUrl: isValid(web.imageUrl, invalidUrls),
     steamUrl: isValid(web.steamUrl, invalidUrls),
     trailerUrl: isValid(web.trailerUrl, invalidUrls),
     screenshotUrls: web.screenshotUrls.filter((u) => !invalidUrls.has(u)),
-    pressLinks: web.pressLinks.filter((p) => !invalidUrls.has(p.url)),
+    pressLinks: web.pressLinks
+      .filter((p) => !invalidUrls.has(p.url))
+      .filter((p) => !isStorePage(p.url)),
     socialLinks: {
-      twitter: scrubBareSocialLink(isValid(web.socialLinks.twitter, invalidUrls)),
-      discord: scrubBareSocialLink(isValid(web.socialLinks.discord, invalidUrls)),
-      youtube: scrubBareSocialLink(isValid(web.socialLinks.youtube, invalidUrls)),
-      itchIo: scrubBareSocialLink(isValid(web.socialLinks.itchIo, invalidUrls)),
+      twitter: scrubSocialLink("twitter", web.socialLinks.twitter, invalidUrls),
+      discord: scrubSocialLink("discord", web.socialLinks.discord, invalidUrls),
+      youtube: scrubSocialLink("youtube", web.socialLinks.youtube, invalidUrls),
+      itchIo: scrubSocialLink("itchIo", web.socialLinks.itchIo, invalidUrls),
     },
   };
 }
@@ -328,13 +450,17 @@ export async function enrich(
   }
 
   // --- Step 4: URL validation ---
-  const allUrls = collectUrls(bggResult.results, webResult.results, steamResult.results);
+  const { all: allUrls, imageUrls } = collectUrls(
+    bggResult.results,
+    webResult.results,
+    steamResult.results,
+  );
 
   console.log(`\n[enrich] Step 4: URL validation (${allUrls.length} URLs)...`);
   const runValidate = options._validateUrls ?? validateUrls;
   let validation: { valid: string[]; invalid: string[] };
   if (allUrls.length > 0) {
-    validation = await runValidate(allUrls);
+    validation = await runValidate(allUrls, { imageUrls });
   } else {
     validation = { valid: [], invalid: [] };
     console.log("[enrich] No URLs to validate.");

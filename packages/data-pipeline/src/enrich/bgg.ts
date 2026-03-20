@@ -54,6 +54,21 @@ export function levenshteinSimilarity(a: string, b: string): number {
 const BGG_BASE = "https://boardgamegeek.com/xmlapi2";
 const BGG_DELAY_MS = 1100; // ~1 req/sec
 
+/**
+ * Build headers for BGG XML API requests.
+ * Requires BGG_API_TOKEN env var (Bearer token from a registered BGG application).
+ * See: https://boardgamegeek.com/using_the_xml_api
+ */
+function bggHeaders(): Record<string, string> {
+  const token = process.env.BGG_API_TOKEN;
+  if (!token) {
+    throw new Error(
+      "BGG_API_TOKEN env var is required. Register at https://boardgamegeek.com/applications to get a Bearer token.",
+    );
+  }
+  return { Authorization: `Bearer ${token}` };
+}
+
 async function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -64,7 +79,7 @@ async function delay(ms: number): Promise<void> {
  */
 export async function searchBgg(query: string): Promise<BggSearchCandidate[]> {
   const url = `${BGG_BASE}/search?query=${encodeURIComponent(query)}&type=boardgame`;
-  const res = await fetch(url);
+  const res = await fetch(url, { headers: bggHeaders() });
   if (!res.ok) return [];
 
   const xml = await res.text();
@@ -103,7 +118,7 @@ export async function fetchBggDetails(
   matchMethod: "auto" | "llm",
 ): Promise<BggEnrichment> {
   const url = `${BGG_BASE}/thing?id=${bggId}&stats=1`;
-  const res = await fetch(url);
+  const res = await fetch(url, { headers: bggHeaders() });
   const xml = await res.text();
   const $ = cheerio.load(xml, { xmlMode: true });
 
@@ -207,7 +222,43 @@ Return the index number of the best match, or null if none match. Only match if 
  * Returns BggEnrichment if a match is found, null otherwise.
  */
 export async function enrichFromBgg(game: HarmonizedGame): Promise<BggEnrichment | null> {
-  const candidates = await searchBgg(game.name);
+  let candidates = await searchBgg(game.name);
+
+  // Subtitle fallback: if full name yields poor results and contains a subtitle
+  // separator (colon, dash, em dash), retry with just the base name.
+  const SUBTITLE_RE = /[:\-–—]/;
+
+  if (candidates.length === 0 && SUBTITLE_RE.test(game.name)) {
+    const baseName = game.name.split(SUBTITLE_RE)[0].trim();
+    if (baseName.length >= 3) {
+      console.log(`[bgg] No results for "${game.name}", retrying as "${baseName}"`);
+      await delay(BGG_DELAY_MS);
+      candidates = await searchBgg(baseName);
+    }
+  } else if (candidates.length > 0) {
+    const bestInitialScore = Math.max(
+      ...candidates.map((c) => levenshteinSimilarity(game.name, c.name)),
+    );
+    if (bestInitialScore < 0.6 && SUBTITLE_RE.test(game.name)) {
+      const baseName = game.name.split(SUBTITLE_RE)[0].trim();
+      if (baseName.length >= 3 && baseName !== game.name) {
+        console.log(
+          `[bgg] Low match for "${game.name}" (best: ${bestInitialScore.toFixed(2)}), retrying as "${baseName}"`,
+        );
+        await delay(BGG_DELAY_MS);
+        const fallbackCandidates = await searchBgg(baseName);
+        if (fallbackCandidates.length > 0) {
+          const fallbackBest = Math.max(
+            ...fallbackCandidates.map((c) => levenshteinSimilarity(game.name, c.name)),
+          );
+          if (fallbackBest > bestInitialScore) {
+            candidates = fallbackCandidates;
+          }
+        }
+      }
+    }
+  }
+
   if (candidates.length === 0) return null;
 
   await delay(BGG_DELAY_MS);
@@ -220,6 +271,9 @@ export async function enrichFromBgg(game: HarmonizedGame): Promise<BggEnrichment
   scored.sort((a, b) => b.score - a.score);
 
   const best = scored[0];
+  console.log(
+    `[bgg] "${game.name}": ${candidates.length} candidates, best="${best.candidate.name}" score=${best.score.toFixed(2)}`,
+  );
 
   // Auto-accept: high confidence match
   if (best.score > 0.9) {
@@ -292,13 +346,28 @@ export interface BggResult {
 }
 
 /**
+ * Check whether BGG enrichment can run (requires BGG_API_TOKEN).
+ */
+export function isBggConfigured(): boolean {
+  return !!process.env.BGG_API_TOKEN;
+}
+
+/**
  * Run BGG enrichment for all tabletop/both games.
  * Sequential (1 req/sec rate limit) with progress bar and caching.
+ * Skips gracefully if BGG_API_TOKEN is not set.
  */
 export async function runBggEnrichment(
   games: HarmonizedGame[],
   options: BggOptions = {},
 ): Promise<BggResult> {
+  if (!isBggConfigured()) {
+    console.warn(
+      "[bgg] BGG_API_TOKEN not set — skipping BGG enrichment. Register at https://boardgamegeek.com/applications",
+    );
+    return { results: new Map(), cachedCount: 0 };
+  }
+
   const { cacheDir, skipCache = false } = options;
 
   const cached =

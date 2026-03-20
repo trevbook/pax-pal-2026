@@ -41,4 +41,15 @@ describe("levenshteinSimilarity", () => {
     const score = levenshteinSimilarity("cat", "bat");
     expect(score).toBeCloseTo(0.667, 2);
   });
+
+  it("scores subtitled names below auto-accept threshold", () => {
+    // This documents why the subtitle fallback search is needed:
+    // subtitled game names score poorly against BGG's base name
+    const score = levenshteinSimilarity(
+      "Invincible: The Card Game - New Recruits",
+      "Invincible: The Card Game",
+    );
+    expect(score).toBeLessThan(0.9);
+    expect(score).toBeGreaterThan(0.5);
+  });
 });

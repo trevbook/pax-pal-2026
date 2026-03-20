@@ -79,6 +79,7 @@ export async function fetchSteamDetails(appId: number): Promise<SteamEnrichment 
     categories,
     releaseDate: data.release_date?.date ?? null,
     reviewScore: data.metacritic?.score ?? null,
+    recommendationCount: data.recommendations?.total ?? null,
     platforms: {
       windows: data.platforms?.windows ?? false,
       mac: data.platforms?.mac ?? false,

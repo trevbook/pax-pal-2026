@@ -23,4 +23,19 @@ describe("checkUrl", () => {
     const result = await checkUrl("https://httpbin.org/delay/10", 100);
     expect(result).toBe(false);
   });
+
+  it("rejects HTML pages when expecting image Content-Type", async () => {
+    const result = await checkUrl("https://www.google.com", { expectedContentType: "image" });
+    expect(result).toBe(false);
+  });
+
+  it("accepts URLs without Content-Type check (backward compat)", async () => {
+    const result = await checkUrl("https://www.google.com", 5000);
+    expect(result).toBe(true);
+  });
+
+  it("accepts URLs with options object and no Content-Type check", async () => {
+    const result = await checkUrl("https://www.google.com", { timeout: 5000 });
+    expect(result).toBe(true);
+  });
 });
