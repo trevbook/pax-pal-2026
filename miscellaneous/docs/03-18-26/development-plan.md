@@ -906,6 +906,14 @@ export const exhibitorsTable = new sst.aws.DynamoTable("Exhibitors", {
 - PK format: `GAME#{id}` and `EXHIBITOR#{id}`
 - Skip unchanged items on re-run
 
+**Data quality: load everything, filter downstream.** The classify stage identified ~3-4 false-positive "games" (apparel products misidentified by discover) that have no genres or tags. These are loaded into DynamoDB anyway — they should NOT be filtered at load time. Reasons:
+
+1. The Report Data Issue modal (see `ui-spec.md` Screen 3) needs all records in the database so users can report problems through the standard channel.
+2. A planned admin/data quality tool needs bad data to exist so it can flag, review, and act on it. Pre-filtering breaks this feedback loop.
+3. The frontend can handle visibility via a `status` field (`"active"` | `"hidden"`) that defaults to `"active"`. Browse views filter on `status === "active"`. The admin tool sets `status` to `"hidden"` or `"rejected"` for bad records.
+
+This keeps all data available for review while hiding it from end users. Only ~3-4 records out of 395 are affected.
+
 ### 3.3 Deploy + Verify
 
 - `sst deploy --stage dev`
