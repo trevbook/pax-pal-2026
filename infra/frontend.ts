@@ -1,8 +1,8 @@
-import { exhibitorsTable, gamesTable } from "./database.js";
+import { exhibitorsTable, gamesTable, reportsTable } from "./database.js";
 import { secrets } from "./secrets.js";
 
 export const frontend = new sst.aws.Nextjs("www", {
   path: "apps/www",
   environment: secrets,
-  link: [gamesTable, exhibitorsTable],
+  link: [gamesTable, exhibitorsTable, reportsTable],
 });

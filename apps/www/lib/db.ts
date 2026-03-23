@@ -52,16 +52,26 @@ export async function getAllActiveGames(): Promise<GameCardData[]> {
 /** Fetch a single game by slug. Returns the full DynamoDB item or null. */
 export async function getGameBySlug(slug: string): Promise<GameDynamoItem | null> {
   // No GSI on slug — scan with filter. Fine for ~395 items.
-  const result = await ddb.send(
-    new ScanCommand({
-      TableName: gamesTable,
-      FilterExpression: "#s = :active AND slug = :slug",
-      ExpressionAttributeNames: { "#s": "status" },
-      ExpressionAttributeValues: { ":active": "active", ":slug": slug },
-      Limit: 1,
-    }),
-  );
-  return (result.Items?.[0] as GameDynamoItem) ?? null;
+  // Cannot use Limit with FilterExpression — Limit caps items *scanned*, not *returned*.
+  let lastKey: Record<string, unknown> | undefined;
+
+  do {
+    const result = await ddb.send(
+      new ScanCommand({
+        TableName: gamesTable,
+        FilterExpression: "#s = :active AND slug = :slug",
+        ExpressionAttributeNames: { "#s": "status" },
+        ExpressionAttributeValues: { ":active": "active", ":slug": slug },
+        ExclusiveStartKey: lastKey,
+      }),
+    );
+    if (result.Items && result.Items.length > 0) {
+      return result.Items[0] as GameDynamoItem;
+    }
+    lastKey = result.LastEvaluatedKey;
+  } while (lastKey);
+
+  return null;
 }
 
 /** Fetch games by exhibitor ID, projected to GameCardData. */

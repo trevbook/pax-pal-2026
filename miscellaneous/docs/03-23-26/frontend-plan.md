@@ -28,7 +28,7 @@ The goal is that any future Claude (or human) picking up this plan can read the 
 | 1. App Scaffold & Layout | ✅ Complete | Routing, nav, theme, metadata |
 | 2. Data Layer & Shared Components | ✅ Complete | DynamoDB access, GameCardData, reusable components |
 | 3. Game Catalogue | ✅ Complete | `/games` — browse + filter |
-| 4. Game Detail & Tracking | 📋 Planned | `/games/[slug]` + localStorage tracking system |
+| 4. Game Detail & Tracking | ✅ Complete | `/games/[slug]` + localStorage tracking system |
 | 5. My Games | 📋 Planned | `/my-games` — personal tracking hub |
 | 6. Search | 📋 Planned | `/search` — hybrid text + semantic |
 | 7. Expo Hall Map | 📋 Planned | `/map`, `/map/[boothId]` + booth data pipeline |
@@ -310,7 +310,21 @@ apps/www/components/game-image.tsx     (image with fallback)
 
 ### Implementation notes
 
-*(To be filled in during implementation.)*
+**Completed 2026-03-23.**
+
+- **Reports table**: Added `Reports` DynamoDB table to `infra/database.ts` (simple PK: `REPORT#{gameId}#{timestamp}`) and linked it in `infra/frontend.ts`. No GSIs needed — reports are write-only in v1, reviewed via DynamoDB console.
+- **Tracking system** (`lib/tracking.ts` + `hooks/use-tracking.ts`): Implements `LocalTrackingData` from the UI spec with `watchlist` and `played` maps plus `reportedGameIds` array. Uses `useSyncExternalStore` for cross-component reactivity (multiple components subscribe to the same localStorage-backed store). Cross-tab sync via `storage` event listener. `useTracking(game)` takes full game input (not just gameId) to denormalize game data on first add per spec Option A. `useTrackingStats()` provides aggregate counts (watchlist, played, totalTracked unique).
+- **Badge count**: Wired `useTrackingStats().totalTracked` into `BottomNav`'s My Games tab. Shows a small pill badge with count (caps at "99+").
+- **Toaster**: Added shadcn/sonner `<Toaster />` to root layout for success/error toasts (report submission).
+- **Game detail server component** (`app/games/[slug]/page.tsx`): `generateStaticParams` generates all ~395 slugs at build time. `generateMetadata` provides per-game title/description. Fetches full game by slug + sibling games by `exhibitorId` + exhibitor data in parallel via `Promise.all`. Returns 404 via `notFound()` if slug not found or inactive.
+- **Page sections** (all server-rendered): Hero image (full-width 16:9 with GameImage fallback), title block (name + TypeBadge + exhibitor link + booth display + discovery confidence badge), Find on Map button (conditional on `boothId`, uses `formatBoothDisplay` for href), full description, type-dependent metadata (video game: platforms with icons, genres, release status, Steam link; tabletop: player count, play time, complexity dots, mechanics, BGG link), full tag list, exhibitor card (logo/initial + name + booth + "N other games →" link), up to 3 sibling games as compact GameCards, external links (showroom, Twitter, Discord, YouTube, itch.io).
+- **Action bar** (`components/action-bar.tsx`): Sticky floating bar above the bottom nav (z-40). Watchlist toggle (heart icon fills when active), Played toggle (checkmark), star rating (1-5, only visible after marking played, tap same star to clear). Haptic feedback via `navigator.vibrate(10)`.
+- **Report modal** (`components/report-modal.tsx`): Uses shadcn Dialog. Five quick-select options (radio behavior), optional free-text (500 char max, required for "Other"). Server action submission via `app/games/[slug]/actions.ts`. Rate-limited: 1 report per game per session via `reportedGameIds` in localStorage — shows "You've already reported this game" if previously submitted. Success toast via sonner.
+- **Client wrapper** (`components/game-detail-client.tsx`): Thin wrapper that provides `useTracking` state to ActionBar and ReportModal. Accepts minimal game data props from the server component.
+- **Key decisions**: Reports table added now (not deferred). Exhibitor links go to `/games?exhibitor={exhibitorId}` (filtered catalogue view) — exhibitor pages are out of scope for MVP. `discoverySource` accessed dynamically via `"discoverySource" in game` (same pattern as Stage 2) since it's not yet on the `Game` interface.
+- **Files created**: `lib/tracking.ts`, `hooks/use-tracking.ts`, `components/action-bar.tsx`, `components/game-detail-client.tsx`, `components/report-modal.tsx`, `app/games/[slug]/actions.ts`.
+- **Files modified**: `app/games/[slug]/page.tsx` (replaced stub), `components/bottom-nav.tsx` (badge), `app/layout.tsx` (Toaster), `infra/database.ts` (Reports table), `infra/frontend.ts` (link Reports).
+- **Deviations**: None significant. Press links section deferred — the `pressLinks` array on `Game` could be rendered but most games won't have them populated yet; can add in Stage 8 polish. Offline report queueing (spec mentions `pendingReports` in localStorage) deferred to Stage 8 — current implementation shows an error toast on failure.
 
 ---
 

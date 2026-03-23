@@ -1,10 +1,436 @@
+import { Clock, ExternalLink, Globe, MapPin, Monitor, Smartphone, Users, Zap } from "lucide-react";
+import type { Metadata } from "next";
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { GameCard } from "@/components/game-card";
+import { GameDetailClient } from "@/components/game-detail-client";
+import { GameImage } from "@/components/game-image";
+import { TagChip } from "@/components/tag-chip";
+import { TypeBadge } from "@/components/type-badge";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
+import { getAllActiveGames, getExhibitorById, getGameBySlug, getGamesByExhibitor } from "@/lib/db";
+import { formatBoothDisplay } from "@/lib/format-booth";
+
+// SSG: generate all game slugs at build time
+export async function generateStaticParams() {
+  const games = await getAllActiveGames();
+  return games.map((g) => ({ slug: g.slug }));
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  const game = await getGameBySlug(slug);
+  if (!game) return { title: "Game Not Found — PAX Pal 2026" };
+  return {
+    title: `${game.name} — PAX Pal 2026`,
+    description: game.summary || `${game.name} at PAX East 2026`,
+  };
+}
+
+// Platform icon mapping
+const PLATFORM_ICONS: Record<
+  string,
+  { icon: React.ComponentType<{ className?: string }>; label: string }
+> = {
+  PC: { icon: Monitor, label: "PC" },
+  PlayStation: { icon: Zap, label: "PlayStation" },
+  Xbox: { icon: Zap, label: "Xbox" },
+  Switch: { icon: Zap, label: "Switch" },
+  Mobile: { icon: Smartphone, label: "Mobile" },
+  VR: { icon: Globe, label: "VR" },
+};
+
+// Discovery confidence
+const LOW_CONFIDENCE_SOURCES = new Set(["web_search", "name_is_game"]);
+
 export default async function GameDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
+  const game = await getGameBySlug(slug);
+  if (!game) notFound();
+
+  const booth = formatBoothDisplay(game.boothId);
+  const discoverySource =
+    "discoverySource" in game ? (game as { discoverySource: string | null }).discoverySource : null;
+  const isLowConfidence = discoverySource && LOW_CONFIDENCE_SOURCES.has(discoverySource);
+
+  // Fetch sibling games + exhibitor in parallel
+  const [siblingGames, exhibitor] = await Promise.all([
+    getGamesByExhibitor(game.exhibitorId),
+    getExhibitorById(game.exhibitorId),
+  ]);
+  const otherGames = siblingGames.filter((g) => g.id !== game.id);
+
+  // Build the Find on Map href
+  let mapHref: string | null = null;
+  if (game.boothId && game.boothId !== "UNSPECIFIED") {
+    const boothDisplay = formatBoothDisplay(game.boothId);
+    mapHref = boothDisplay?.href ?? null;
+  }
+
+  // BGG link
+  const bggUrl = game.bggId ? `https://boardgamegeek.com/boardgame/${game.bggId}` : null;
 
   return (
-    <div className="p-4">
-      <h1 className="text-2xl font-bold">Game Detail</h1>
-      <p className="mt-2 text-muted-foreground">Detail page for: {slug}</p>
+    <div className="pb-28">
+      {/* Hero image */}
+      <div className="relative aspect-[16/9] w-full overflow-hidden bg-muted">
+        <GameImage src={game.imageUrl} alt={game.name} type={game.type} sizes="100vw" />
+      </div>
+
+      <div className="mx-auto max-w-2xl px-4">
+        {/* Title block */}
+        <div className="mt-4 flex flex-col gap-2">
+          <div className="flex items-start gap-2">
+            <h1 className="flex-1 text-2xl font-bold leading-tight">{game.name}</h1>
+            <TypeBadge type={game.type} className="mt-1 shrink-0" />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+            <Link
+              href={`/games?exhibitor=${encodeURIComponent(game.exhibitorId)}`}
+              className="font-medium hover:underline"
+            >
+              {game.exhibitor}
+            </Link>
+            {booth && (
+              <>
+                <span>·</span>
+                {booth.href ? (
+                  <Link href={booth.href} className="hover:underline">
+                    <MapPin className="mr-0.5 inline size-3.5" />
+                    {booth.label}
+                  </Link>
+                ) : (
+                  <span>
+                    <MapPin className="mr-0.5 inline size-3.5" />
+                    {booth.label}
+                  </span>
+                )}
+              </>
+            )}
+          </div>
+
+          {isLowConfidence && (
+            <span className="inline-flex w-fit items-center rounded-full bg-yellow-100 px-2.5 py-0.5 text-xs font-medium text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300">
+              Unverified — identified from web sources
+            </span>
+          )}
+        </div>
+
+        {/* Find on Map button */}
+        {mapHref && (
+          <Link href={mapHref} className="mt-4 block">
+            <Button variant="secondary" className="w-full">
+              <MapPin className="mr-2 size-4" />
+              Find on Map
+            </Button>
+          </Link>
+        )}
+
+        {/* Description */}
+        {game.description && (
+          <div className="mt-6">
+            <p className="whitespace-pre-line text-sm leading-relaxed text-foreground/90">
+              {game.description}
+            </p>
+          </div>
+        )}
+
+        <Separator className="my-6" />
+
+        {/* Metadata — type-dependent */}
+        <div className="flex flex-col gap-4">
+          {/* Video game metadata */}
+          {(game.type === "video_game" || game.type === "both") && (
+            <>
+              {game.platforms && game.platforms.length > 0 && (
+                <div>
+                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Platforms
+                  </h3>
+                  <div className="flex flex-wrap gap-2">
+                    {game.platforms.map((p) => {
+                      const mapping = PLATFORM_ICONS[p];
+                      const Icon = mapping?.icon ?? Monitor;
+                      return (
+                        <span
+                          key={p}
+                          className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs"
+                        >
+                          <Icon className="size-3.5" />
+                          {mapping?.label ?? p}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {game.genres && game.genres.length > 0 && (
+                <div>
+                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Genres
+                  </h3>
+                  <div className="flex flex-wrap gap-1.5">
+                    {game.genres.map((g) => (
+                      <TagChip key={g} label={g} />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {game.releaseStatus && (
+                <div>
+                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Release Status
+                  </h3>
+                  <span className="inline-flex items-center rounded-full border border-border bg-muted/50 px-2.5 py-0.5 text-xs capitalize">
+                    {game.releaseStatus.replace(/_/g, " ")}
+                  </span>
+                </div>
+              )}
+
+              {game.steamUrl && (
+                <a
+                  href={game.steamUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
+                >
+                  View on Steam
+                  <ExternalLink className="size-3.5" />
+                </a>
+              )}
+            </>
+          )}
+
+          {/* Tabletop metadata */}
+          {(game.type === "tabletop" || game.type === "both") && (
+            <>
+              <div className="flex flex-wrap gap-4">
+                {game.playerCount && (
+                  <div className="flex items-center gap-1.5 text-sm">
+                    <Users className="size-4 text-muted-foreground" />
+                    <span>{game.playerCount} players</span>
+                  </div>
+                )}
+                {game.playTime && (
+                  <div className="flex items-center gap-1.5 text-sm">
+                    <Clock className="size-4 text-muted-foreground" />
+                    <span>{game.playTime}</span>
+                  </div>
+                )}
+                {game.complexity != null && (
+                  <div className="flex items-center gap-1.5 text-sm">
+                    <span className="text-muted-foreground">Complexity:</span>
+                    <div className="flex gap-0.5">
+                      {[1, 2, 3].map((level) => (
+                        <span
+                          key={level}
+                          className={`size-2.5 rounded-full ${
+                            game.complexity != null && level <= game.complexity
+                              ? "bg-foreground"
+                              : "bg-muted-foreground/30"
+                          }`}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {game.mechanics && game.mechanics.length > 0 && (
+                <div>
+                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Mechanics
+                  </h3>
+                  <div className="flex flex-wrap gap-1.5">
+                    {game.mechanics.map((m) => (
+                      <TagChip key={m} label={m} />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {game.tabletopGenres && game.tabletopGenres.length > 0 && (
+                <div>
+                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Tabletop Genres
+                  </h3>
+                  <div className="flex flex-wrap gap-1.5">
+                    {game.tabletopGenres.map((g) => (
+                      <TagChip key={g} label={g} />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {bggUrl && (
+                <a
+                  href={bggUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
+                >
+                  View on BoardGameGeek
+                  <ExternalLink className="size-3.5" />
+                </a>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Full tag list */}
+        {game.tags.length > 0 && (
+          <>
+            <Separator className="my-6" />
+            <div>
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Tags
+              </h3>
+              <div className="flex flex-wrap gap-1.5">
+                {game.tags.map((tag) => (
+                  <TagChip key={tag} label={tag} />
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Exhibitor card */}
+        <Separator className="my-6" />
+        <div className="rounded-lg border border-border p-4">
+          <div className="flex items-center gap-3">
+            {exhibitor?.imageUrl ? (
+              <div className="relative size-12 shrink-0 overflow-hidden rounded-lg bg-muted">
+                <GameImage
+                  src={exhibitor.imageUrl}
+                  alt={exhibitor.name}
+                  type="video_game"
+                  sizes="48px"
+                />
+              </div>
+            ) : (
+              <div className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-muted text-lg font-bold text-muted-foreground">
+                {game.exhibitor.charAt(0)}
+              </div>
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold">{game.exhibitor}</p>
+              {booth && <p className="text-sm text-muted-foreground">{booth.label}</p>}
+              {otherGames.length > 0 && (
+                <Link
+                  href={`/games?exhibitor=${encodeURIComponent(game.exhibitorId)}`}
+                  className="text-sm text-primary hover:underline"
+                >
+                  {otherGames.length} other game{otherGames.length !== 1 ? "s" : ""} →
+                </Link>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Other games by this exhibitor — show up to 3 */}
+        {otherGames.length > 0 && (
+          <div className="mt-4">
+            <h3 className="mb-3 text-sm font-semibold text-muted-foreground">
+              More from {game.exhibitor}
+            </h3>
+            <div className="flex flex-col gap-2">
+              {otherGames.slice(0, 3).map((g) => (
+                <GameCard key={g.id} game={g} compact />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* External links */}
+        {(game.showroomUrl || game.socialLinks?.twitter || game.socialLinks?.discord) && (
+          <>
+            <Separator className="my-6" />
+            <div>
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Links
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                {game.showroomUrl && (
+                  <a
+                    href={game.showroomUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-accent"
+                  >
+                    PAX Showroom
+                    <ExternalLink className="size-3" />
+                  </a>
+                )}
+                {game.socialLinks?.twitter && (
+                  <a
+                    href={game.socialLinks.twitter}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-accent"
+                  >
+                    Twitter
+                    <ExternalLink className="size-3" />
+                  </a>
+                )}
+                {game.socialLinks?.discord && (
+                  <a
+                    href={game.socialLinks.discord}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-accent"
+                  >
+                    Discord
+                    <ExternalLink className="size-3" />
+                  </a>
+                )}
+                {game.socialLinks?.youtube && (
+                  <a
+                    href={game.socialLinks.youtube}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-accent"
+                  >
+                    YouTube
+                    <ExternalLink className="size-3" />
+                  </a>
+                )}
+                {game.socialLinks?.itchIo && (
+                  <a
+                    href={game.socialLinks.itchIo}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-accent"
+                  >
+                    itch.io
+                    <ExternalLink className="size-3" />
+                  </a>
+                )}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Client interactive elements — action bar + report */}
+        <GameDetailClient
+          game={{
+            id: game.id,
+            name: game.name,
+            slug: game.slug,
+            imageUrl: game.imageUrl,
+            boothId: game.boothId,
+            type: game.type,
+            exhibitor: game.exhibitor,
+          }}
+        />
+      </div>
     </div>
   );
 }
