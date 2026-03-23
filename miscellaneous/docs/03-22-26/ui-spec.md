@@ -86,17 +86,19 @@ Five tabs, always visible, thumb-friendly:
    - CTA button: "Browse Games →"
 
 5. **Featured Games** (carousel or horizontal scroll)
-   - The 9 PAX-featured exhibitors/games
-   - Card: image, name, type badge
+   - Games from PAX-featured exhibitors (`isFeatured === true`). Note: ~38 games inherit this flag from ~9 featured exhibitors — display grouped by exhibitor (e.g., "Games from Poland" section with its 11 games) rather than a flat 38-item carousel. Show 1 card per exhibitor in the carousel, tappable to expand or navigate to a filtered view.
+   - Card: image, name, exhibitor name, type badge
    - Swipeable on mobile
 
 6. **Quick Stats** (subtle, near bottom)
-   - "423 games · 368 exhibitors · 3 days of PAX"
+   - Dynamic counts, server-rendered: "{gameCount} games · {exhibitorCount} exhibitors · 3 days of PAX"
+   - Current data: ~395 games, ~373 exhibitors (do not hardcode — query at build time)
 
 ### Data Flow
 
-- Game count, exhibitor count: server-rendered (static or ISR)
-- Featured games: server-rendered from DynamoDB query (`isFeatured === true`)
+- Game count, exhibitor count: server-rendered (SSG with ISR, revalidate every 1 hour — data is near-static during the 3-day event)
+- Featured games: server-rendered from DynamoDB query (`isFeatured === true`, `status === "active"`)
+- All DynamoDB queries must filter for `status === "active"` (hidden games should never reach the frontend)
 - Tracking data (watchlist, played counts): read from localStorage on client mount
 - Conditional rendering: progress bar vs. watchlist prompt based on localStorage state
 
@@ -113,16 +115,17 @@ Five tabs, always visible, thumb-friendly:
    [ Video Games ]  [ Tabletop ]
    ```
    - Two tabs, not three. No "All" tab — filters and metadata differ between types, and a combined view with incompatible filter options is confusing
-   - Default: Video Games (larger set)
+   - Default: Video Games (larger set, ~264 games)
    - Tab switch resets filters but preserves search text
+   - **`type: "both"` games** (~17 games are both video game and tabletop): show in **both** tabs. These are games like hybrid digital/physical titles that genuinely belong in both views. The game card component already shows a type badge, so users can see the dual nature.
 
 2. **Filter bar** (below tabs, collapsible on mobile)
    - **Search input**: text filter within the current tab (client-side substring match — NOT the hybrid semantic search, which lives at `/search`)
-   - **Tag/genre filter**: multi-select chips. Video Games tab shows genres (Action, RPG, Roguelike, etc.). Tabletop tab shows mechanics (Deck-Builder, Co-op, Dice, etc.)
+   - **Tag/genre filter**: multi-select chips. Video Games tab shows `genres` field values (Action, RPG, Roguelike, etc.). Tabletop tab shows `mechanics` field values (Deck-Builder, Co-op, Dice, etc.). Only show chips for values that exist in the current dataset (query distinct values at build time).
    - **Sort**: dropdown — "Name (A-Z)", "Booth Number"
    - Filter bar collapses to a single "Filters" button on small screens, expands into a bottom sheet
 
-3. **Results count**: "Showing 145 video games" / "Showing 112 tabletop games"
+3. **Results count**: "Showing {n} video games" / "Showing {n} tabletop games" — dynamic, reflects active filters. Current data: ~281 video games (264 + 17 "both"), ~131 tabletop (114 + 17 "both").
 
 4. **Game card grid** (single column on mobile, 2-col on tablet, 3-col on desktop)
 
@@ -136,29 +139,35 @@ Five tabs, always visible, thumb-friendly:
 │  Exhibitor · Booth 15043   │
 │  Short summary (2 lines)    │
 │                             │
-│  [RPG] [Co-op] [Indie]     │  ← top 3 tags as chips
+│  [RPG] [Co-op] [Indie]     │  ← top 3 tag chips (see priority below)
 │                             │
 │  ♡ Watchlisted  ✓ Played   │  ← tracking indicators (if applicable)
 └─────────────────────────────┘
 ```
 
-- **Type badge**: small colored indicator (blue for video game, green for tabletop) on the image or top-right corner
-- **Discovery confidence**: for games with `discoverySource` of `web_search` or `name_is_game`, show a subtle "unverified" indicator (e.g., a small icon or lighter card border). Tooltip/tap-to-explain: "This game was identified from web sources and may not be accurate."
+- **Type badge**: small colored indicator (blue for video game, green for tabletop, dual-color for "both") on the image or top-right corner
+- **Tag chip priority**: The `tags` array is a mixed union of genres, mechanics, audience tags, business tags, and style tags. For the 3 card chips, use this priority order: (1) `genres` or `tabletopGenres` (most descriptive), (2) `mechanics`, (3) business tags from `tags` (e.g., "Indie", "Early Access Demo"), (4) audience tags (e.g., "Co-op", "Multiplayer"). Skip style tags on cards (save for detail page). If a game has fewer than 3 qualifying tags, show fewer chips.
+- **Discovery confidence**: for games with `discoverySource` of `web_search` or `name_is_game`, show a subtle "unverified" indicator (e.g., a small icon or lighter card border). Tooltip/tap-to-explain: "This game was identified from web sources and may not be accurate." **Prerequisite**: `discoverySource` must be added to the `Game` interface and carried through the classify/embed pipeline stages — it currently exists only on `HarmonizedGame` and is dropped during enrichment.
 - **Tracking indicators**: if the game is in the user's watchlist or played list (from localStorage), show small icons on the card. This gives at-a-glance status while browsing.
 - **Tap target**: entire card navigates to `/games/[slug]`
 
 ### Pagination
 
 - Client-side virtual scrolling or "Load more" button (not traditional page numbers)
-- ~400 games total, split across two tabs, so ~150-250 per tab. Initial render: 20 cards, load 20 more on scroll/tap
-- All game data fetched on initial load (server component), filtered/sorted client-side
+- ~395 games total. With `type: "both"` appearing in both tabs: ~281 in Video Games tab, ~131 in Tabletop tab. Initial render: 20 cards, load 20 more on scroll/tap
+- All game card data fetched on initial load (server component), filtered/sorted client-side
 
 ### Data Flow
 
-- Server component fetches all games from DynamoDB (`getAllGames()`)
+- Server component fetches all games from DynamoDB. Two viable approaches:
+  - **Option A (recommended for ~395 games)**: Fetch all active games in a single scan, pass to client for tab filtering. Simple, one query, and the dataset is small enough (~395 items) that a full scan is fast. Tab switching is instant (no refetch).
+  - **Option B**: Use the `byType` GSI (hashKey: `type`, rangeKey: `name`) to query per-tab. More efficient at scale, but adds complexity for `type: "both"` games (need to appear in both tabs) and requires a refetch on tab switch.
+- **Critical: define a `GameCardData` projection.** The full `Game` record includes `embedding` (3072 floats, ~24KB per game), `description`, `pressLinks`, `socialLinks`, `mediaUrls`, and `paxTags` — none of which are needed for card rendering. The server component must project only the fields needed for cards before passing to the client: `id`, `name`, `slug`, `type`, `summary`, `imageUrl`, `exhibitor`, `exhibitorId`, `boothId`, `tags`, `genres`, `tabletopGenres`, `mechanics`, `platforms`, `isFeatured`, `releaseStatus`, `discoverySource`. This reduces the payload from ~24MB to ~200-300KB.
+- All queries must filter for `status === "active"`
 - Games passed to client component for interactive filtering/sorting/pagination
 - Tracking state (watchlist/played) read from localStorage on mount, overlaid onto cards
 - Tab switch filters the already-loaded dataset (no additional fetch)
+- **Caching**: This page should be statically generated (SSG) or ISR with a long revalidation period (1 hour). Game data changes rarely during the 3-day event.
 
 ---
 
@@ -174,8 +183,8 @@ Five tabs, always visible, thumb-friendly:
 2. **Title block**
    - Game name (h1)
    - Type badge (Video Game / Tabletop)
-   - Exhibitor name (tappable → `/exhibitors/[slug]` if exhibitor pages exist)
-   - Booth location (tappable → `/map/[boothId]`)
+   - Exhibitor name — tappable → `/exhibitors/[slug]` if exhibitor pages are built (Nice-to-have). **If exhibitor pages are not built in v1**: link to `/games?exhibitor={exhibitorId}` (filtered catalogue view showing all games by this exhibitor) as a fallback.
+   - Booth display (tappable → `/map/[boothId]` or `/map?booths=...` for multi-booth). See Booth Display Formatting in Cross-Cutting Concerns for how to render different `boothId` formats.
    - Discovery confidence badge if applicable
 
 3. **Action buttons** (sticky floating bar at bottom of screen, always visible)
@@ -190,8 +199,11 @@ Five tabs, always visible, thumb-friendly:
 
 4. **"Find on Map" button**
    - Prominent, full-width secondary button
-   - Navigates to `/map/[boothId]`
-   - For tabletop games without a numeric booth: navigates to `/map` and shows the tabletop reference map with a note that booth highlighting isn't available for this area (see Screen 6 for details)
+   - Navigation logic based on `boothId` value:
+     - Single numeric booth (e.g., `"15043"`): → `/map/15043`
+     - Multi-booth (contains `,`): → `/map?booths=18019,18031,NL2` (highlights all)
+     - Tabletop-only booth (`TT*` or `"Tabletop Hall"`): → `/map` with auto-switch to Tabletop Hall tab + info banner (see Screen 6 Tabletop Fallback)
+     - `"UNSPECIFIED"` or `null`: hide the "Find on Map" button entirely
    - For multi-booth exhibitors: highlights all booths
 
 5. **Description**
@@ -223,8 +235,8 @@ Five tabs, always visible, thumb-friendly:
    │          3 other games →   │
    └────────────────────────────┘
    ```
-   - Shows the exhibitor with a count of other games at their booth
-   - "3 other games →" links to exhibitor detail or a filtered game list
+   - Shows the exhibitor with a count of other games by this exhibitor (fetched via `exhibitorId` query — see Data Flow)
+   - "3 other games →" links to exhibitor detail page if built, otherwise to `/games?exhibitor={exhibitorId}` (filtered catalogue view)
 
 9. **External links**
    - PAX showroom page
@@ -288,11 +300,12 @@ No UI to view reports in v1. Reports are reviewed via DynamoDB console or a simp
 
 ### Data Flow
 
-- Server component fetches game by slug (`getGameById(slug)`)
+- Server component fetches game by slug (`getGameById(slug)`) — must filter `status === "active"`
+- Server component also fetches sibling games by `exhibitorId` (DynamoDB query on Games table filtering by `exhibitorId`) for the exhibitor card's "N other games →" link and count
 - Tracking state (watchlist/played/rating) read from localStorage on client mount
 - Action buttons write to localStorage
-- Report submission: server action → DynamoDB put
-- "Find on Map" link: constructed from `game.boothLocation`
+- Report submission: server action → DynamoDB put. Rate-limit: 1 report per game per session (track submitted gameIds in localStorage to prevent duplicate submissions)
+- "Find on Map" link: constructed from `game.boothId` (see Booth Display Formatting in Cross-Cutting Concerns)
 
 ---
 
@@ -342,23 +355,23 @@ No UI to view reports in v1. Reports are reviewed via DynamoDB console or a simp
 
 The search bar functions as both an "entity" search and a "semantic" search in a single query:
 
-- **Entity matching**: substring match against game name, exhibitor name, tags (fast, client-feasible or lightweight server query)
-- **Semantic matching**: query text is embedded via Gemini, then cosine similarity is computed against all game embeddings in memory on the server
+- **Entity matching**: substring match against game name, exhibitor name, tags (fast, client-feasible or lightweight server query against DynamoDB or cached game data)
+- **Semantic matching**: query text is embedded via Gemini, then S3 Vectors `QueryVectors` returns the nearest neighbors by cosine similarity
 - Results are merged and deduplicated — a game that matches both ways gets a boosted score
 - The distinction is surfaced via the match type indicator but the user doesn't need to choose a mode
 
 ### Data Flow
 
-- User types query → debounced (300ms) → server action
-- Server action:
-  1. Embeds query text via Gemini `gemini-embedding-001`
-  2. Computes cosine similarity against in-memory game embeddings
-  3. Also runs text substring match against name/description/tags
-  4. Merges results with hybrid scoring
-  5. Returns top 30 results
-- Client displays results using same card component as catalogue
-- Type tabs filter the result set client-side (no re-fetch)
-- **Offline fallback**: if embedding API is unreachable, fall back to text-only search with a subtle banner: "Semantic search unavailable — showing text matches only"
+**Progressive search strategy** (important for spotty WiFi): text results appear first, then semantic results enhance the list when ready. This avoids blocking the entire search on the Gemini API call.
+
+- User types query → debounced (300ms) → **two parallel server actions**:
+  1. **Text search** (fast path, ~50ms): substring match against game name, exhibitor name, tags from DynamoDB or cached game data. Results render immediately.
+  2. **Semantic search** (slow path, ~500-1500ms): embed query via Gemini `text-embedding-004` (3072d) → `QueryVectors` against S3 Vectors index → returns top-K nearest neighbors with scores.
+- Client merges results as they arrive: text results show first with a subtle loading indicator for semantic results; when semantic results return, the list re-ranks with hybrid scoring (default 70/30 semantic/text per vision doc)
+- S3 Vectors `QueryVectors` supports **metadata filtering** — the type tabs (`[ All ] [ Video Games ] [ Tabletop ]`) can filter server-side in the vector query via metadata filter on `type`. The "All" tab omits the filter. This is more efficient than fetching all results and filtering client-side.
+- Returns top 30 results per path, deduplicated in the merge
+- **Offline fallback**: if embedding API or S3 Vectors is unreachable, fall back to text-only search with a subtle banner: "Semantic search unavailable — showing text matches only"
+- **Caching**: Search results are not cached (queries are unique). But the game card data needed to render results should use the same `GameCardData` projection as the catalogue.
 
 ---
 
@@ -393,7 +406,13 @@ The search bar functions as both an "entity" search and a "semantic" search in a
 
 3. **Sort controls** (within each tab)
    - "Name (A-Z)" (default)
-   - "Booth Number" — sorts by booth location for floor-walking route planning. Numeric booths sort numerically (15xxx area first, then 16xxx, etc.). Tabletop `TT*` booths group together at the end. Games without booth data sort last.
+   - "Booth Number" — sorts by `boothId` for floor-walking route planning. Parsing rules for the sort comparator:
+     - Pure numeric (e.g., `"15043"`): sort numerically ascending
+     - `NL`-prefixed (e.g., `"NL2"`, `"NL7"`): sort after numeric booths, numerically by suffix
+     - `TT`-prefixed (e.g., `"TT29A"`): sort after NL booths, alphanumerically
+     - Multi-booth (contains `,`, e.g., `"18019, 18031, NL2"`): sort by the **first** booth in the comma-separated list
+     - `"Tabletop Hall"`: sort with TT booths
+     - `"UNSPECIFIED"` or `null`: sort last
    - "Recently Added" — based on when the user added the game to the list (stored in localStorage with timestamp)
 
 4. **Game list** (same card component, compact variant)
@@ -424,8 +443,8 @@ The search bar functions as both an "entity" search and a "semantic" search in a
 - Game metadata (name, image, booth, etc.) needs to be resolved from game IDs stored in localStorage. Two approaches:
   - **Option A**: localStorage stores full game objects (denormalized). Simpler, works fully offline, but stale if game data updates.
   - **Option B**: localStorage stores only game IDs + timestamps. On page load, resolve IDs against cached game data (from the catalogue's initial fetch). More accurate, but needs the game data cache to be warm.
-  - **Recommended: Option A** for v1 — store the essential display fields (id, name, slug, imageUrl, boothLocation, type) alongside the tracking state. Offline reliability matters more than freshness at a 3-day event.
-- Sort-by-booth is a pure client-side sort on the `boothLocation` field
+  - **Recommended: Option A** for v1 — store the essential display fields (id, name, slug, imageUrl, boothId, type, exhibitor) alongside the tracking state. Offline reliability matters more than freshness at a 3-day event.
+- Sort-by-booth is a pure client-side sort on the `boothId` field (see sort parsing rules above)
 - Export uses the Web Share API (`navigator.share()`) with text fallback
 
 ---
@@ -490,7 +509,7 @@ This is the prerequisite for the map feature. Produces `booths.json` mapping boo
 4. Merge adjacent text chunks on the same scan-line (same 15px gap threshold as 2025)
 5. Output: `booths.json` — `{ "16021": [x1, y1, x2, y2], ... }`
 
-**Validation step:** After OCR, cross-reference extracted booth IDs against our game data's `boothLocation` values. Flag any booth IDs in game data that don't appear in `booths.json` (need manual coordinates or OCR retry). Flag any OCR results that don't match any game data (noise).
+**Validation step:** After OCR, cross-reference extracted booth IDs against our game data's `boothId` values. Flag any booth IDs in game data that don't appear in `booths.json` (need manual coordinates or OCR retry). Flag any OCR results that don't match any game data (noise). Note: multi-booth games store comma-separated values in `boothId` (e.g., `"18019, 18031, NL2"`) — split on `, ` before cross-referencing.
 
 **Manual overrides:** Some booths won't OCR cleanly (logos obscuring text, multi-booth exhibitors). Store manual coordinate overrides in `booths-overrides.json` that get merged on top of the OCR output.
 
@@ -498,11 +517,12 @@ This is the prerequisite for the map feature. Produces `booths.json` mapping boo
 
 ### Data Flow
 
-- `booths.json` is loaded as a static JSON file (bundled with the app or fetched on map page load)
-- Reverse index (boothId → games) built at server render time from the games dataset
+- `booths.json` bundled as a static JSON file at build time (imported directly, not fetched at runtime — it's a small file)
+- Booth → games lookup: use the `byBooth` GSI on the Games DynamoDB table (hashKey: `boothId`) to query games at a specific booth. This replaces the need to build a reverse index from the full dataset. For the full map view, the lookup happens on-demand when a booth is tapped (bottom sheet content is fetched per-tap, not pre-loaded for all booths).
 - Map image served from `/public` or S3
 - SVG overlay rendered client-side with viewBox matching natural image dimensions
-- Tap handling: detect which booth bounding box contains the tap coordinate, look up games in the reverse index
+- Tap handling: detect which booth bounding box contains the tap coordinate → server action or API route queries `byBooth` GSI → bottom sheet renders results
+- **Caching**: booth tap results should be cached client-side (in-memory or sessionStorage) to avoid re-fetching on repeated taps of the same booth. Map image should have aggressive HTTP cache headers.
 
 ---
 
@@ -532,9 +552,13 @@ Same map view as Screen 6, but:
 
 ### Multi-Booth Exhibitors
 
-Some exhibitors have multiple booth locations (e.g., Nintendo at 18019 and 18043). When navigating from a game detail page:
+Some exhibitors have multiple booth locations stored as comma-separated `boothId` values (e.g., Nintendo: `"18019, 18031, NL2"`, Wizards of the Coast: `"16031, 22013"`). There are ~11 multi-booth exhibitors in the dataset.
 
-- Highlight ALL booths associated with the exhibitor
+**URL scheme**: `/map/[boothId]` cannot represent comma-separated values in a single path segment. Use query params instead: `/map?booths=18019,18031,NL2`. The `[boothId]` route handles single booths; the query-param route handles multi-booth. Game detail's "Find on Map" button should construct the appropriate URL based on whether `boothId` contains a comma.
+
+When navigating from a game detail page:
+
+- Highlight ALL booths from the game's `boothId` field (split on `, `)
 - Zoom to fit all highlighted booths in view
 - Info bar lists all booth numbers
 
@@ -548,10 +572,10 @@ When a tabletop game's "Find on Map" button is tapped but the booth can't be hig
 
 ### Data Flow
 
-- `boothId` from URL params → lookup in `booths.json` for coordinates
-- If booth not found: show map with an error message ("Booth not found on map")
+- `boothId` from URL params (single booth) or `booths` from query params (multi-booth) → lookup in `booths.json` for coordinates
+- If booth not found in `booths.json`: show map with an info message ("Booth location not available on map — it may be in an unmapped area")
 - Highlight coordinates used to set initial pan/zoom center
-- Same reverse index lookup for the info bar
+- Info bar: `byBooth` GSI query to get games at this booth (same mechanism as map tap in Screen 6)
 
 ---
 
@@ -582,8 +606,8 @@ Lower priority than game screens. Could be hidden from nav and only accessible v
 
 ### Data Flow
 
-- Server component fetches all exhibitors from DynamoDB
-- Kind filter and search are client-side
+- Server component fetches all exhibitors from DynamoDB (filter `status === "active"`)
+- Kind filter and search are client-side. The `byKind` GSI can be used to query by `exhibitorKind` if per-tab server queries are preferred.
 - Game counts denormalized on the exhibitor record (`demoCount + discoveredGameCount`)
 
 ---
@@ -600,7 +624,7 @@ Lower priority than game screens. Could be hidden from nav and only accessible v
 
 ### Data Flow
 
-- Server component fetches exhibitor by slug + linked games (filter games by `exhibitorId`)
+- Server component fetches exhibitor by slug (filter `status === "active"`) + linked games (query Games table filtering by `exhibitorId`, `status === "active"`)
 
 ---
 
@@ -633,7 +657,7 @@ Lower priority than game screens. Could be hidden from nav and only accessible v
 - Conversational interface: user asks natural language questions, gets game recommendations
 - Example: "I have 2 hours and want to play something cooperative with my partner"
 - Responses include inline game cards (same card component) with direct links to game detail pages
-- Backed by: query → Gemini embedding → cosine similarity vector search → top-K games fed as context to LLM → natural language response with structured game references
+- Backed by: query → Gemini embedding → S3 Vectors `QueryVectors` → top-K games fed as context to LLM → natural language response with structured game references
 - Could use Gemini or Claude as the conversational LLM
 - Chat history stored in localStorage (session-scoped, not persisted to cloud)
 
@@ -642,7 +666,7 @@ Lower priority than game screens. Could be hidden from nav and only accessible v
 - Game embeddings already support the retrieval step
 - The unified game schema has all the metadata the LLM needs for recommendations
 - No additional data model work needed — when chat is built, it reads the same game data as search
-- The search page's semantic search is essentially the retrieval half of the chat pipeline
+- The search page's semantic search (S3 Vectors `QueryVectors`) is essentially the retrieval half of the chat pipeline
 
 ### Rough UX Notes
 
@@ -684,7 +708,7 @@ interface LocalTrackingData {
       name: string;
       slug: string;
       imageUrl: string | null;
-      boothLocation: string | null;
+      boothId: string | null;    // matches Game.boothId field
       type: "video_game" | "tabletop" | "both";
       exhibitor: string;
     };
@@ -697,25 +721,28 @@ interface LocalTrackingData {
       name: string;
       slug: string;
       imageUrl: string | null;
-      boothLocation: string | null;
+      boothId: string | null;    // matches Game.boothId field
       type: "video_game" | "tabletop" | "both";
       exhibitor: string;
     };
   };
+  // Report deduplication: track which games the user has already reported
+  reportedGameIds: string[];
 }
 ```
 
 - Watchlist and played are separate maps (a game can be in both — "I watchlisted it and then I played it")
 - Denormalized game fields stored at add-time for offline display
-- Total localStorage usage estimate: ~400 games * ~200 bytes = ~80KB worst case. Well within limits.
+- **Field name note**: the game data model uses `boothId` (not `boothLocation`) for the booth identifier field. The exhibitor data model uses `boothLocation`. This spec consistently uses `boothId` since the frontend primarily works with `Game` records.
+- Total localStorage usage estimate: ~395 games * ~200 bytes = ~79KB worst case. Well within limits.
 
 ### DynamoDB Tables (Updated)
 
-Adding the Reports table to the Stage 3 infrastructure plan:
+Stage 3 provisions the Games and Exhibitors tables (see `infra/database.ts`). Adding the Reports table for the game detail report modal:
 
 ```typescript
-// Reports table
-export const reportsTable = new sst.aws.DynamoTable("Reports", {
+// Reports table — uses sst.aws.Dynamo (not DynamoTable)
+export const reportsTable = new sst.aws.Dynamo("Reports", {
   fields: { pk: "string", gameId: "string", createdAt: "string" },
   primaryIndex: { hashKey: "pk" },
   globalIndexes: {
@@ -723,6 +750,105 @@ export const reportsTable = new sst.aws.DynamoTable("Reports", {
   },
 });
 ```
+
+**Note**: The Games table has GSIs `byType` (type + name) and `byBooth` (boothId) — see Stage 3 plan for details. The Exhibitors table has GSI `byKind` (kind + name). All game/exhibitor records include a `status` field (`"active" | "hidden"`) that must be checked in every query.
+
+### Booth Display Formatting
+
+The `boothId` field on `Game` records contains several different formats. The UI needs a shared formatter function (`formatBoothDisplay`) to render these consistently:
+
+| `boothId` value | Display text | Tappable? |
+|-----------------|-------------|-----------|
+| `"15043"` (numeric) | "Booth 15043" | Yes → `/map/15043` |
+| `"TT29A"` (tabletop) | "Table TT29A" | Yes → `/map` (tabletop tab) |
+| `"18019, 18031, NL2"` (multi) | "Booths 18019, 18031, NL2" | Yes → `/map?booths=18019,18031,NL2` |
+| `"Tabletop Hall"` | "Tabletop Hall" | Yes → `/map` (tabletop tab) |
+| `"UNSPECIFIED"` | *(hidden — don't show booth info)* | No |
+| `null` | *(hidden — don't show booth info)* | No |
+
+This formatter is used by: `GameCard`, Game Detail title block, Exhibitor Card, Map info bar.
+
+### GameCardData Projection
+
+The full `Game` record is ~60KB per game (dominated by the 3072-float `embedding` array). Define a `GameCardData` type as the subset sent from server components to client components:
+
+```typescript
+interface GameCardData {
+  id: string;
+  name: string;
+  slug: string;
+  type: GameType;
+  summary: string | null;
+  imageUrl: string | null;
+  exhibitor: string;
+  exhibitorId: string;
+  boothId: string | null;
+  isFeatured: boolean;
+  // Classification (for tag chips + filter)
+  tags: Tag[];
+  genres: VideoGameGenre[] | null;
+  tabletopGenres: TabletopGenre[] | null;
+  mechanics: TabletopMechanic[] | null;
+  platforms: Platform[] | null;
+  releaseStatus: string | null;
+  // Discovery (requires pipeline fix — see note on discoverySource)
+  discoverySource: DiscoverySource | null;
+}
+```
+
+**Excluded from card data**: `embedding`, `description`, `pressLinks`, `socialLinks`, `mediaUrls`, `paxTags`, `styleTags`, `bggId`, `steamAppId`, `steamUrl`, `playerCount`, `playTime`, `complexity`, `price`, `developerName`, `enrichedAt`, `lastScrapedAt`, `sourcePages`.
+
+Estimated payload: ~395 games × ~500 bytes = **~200KB** (vs. ~24MB for full records). Acceptable for initial page load even on slow connections.
+
+### Caching Strategy
+
+Game data is near-static during the 3-day event. Caching is critical for performance on spotty WiFi.
+
+| Page | Rendering strategy | Cache behavior |
+|------|-------------------|----------------|
+| `/` (Home) | SSG or ISR (1h revalidate) | Counts + featured games baked at build |
+| `/games` | SSG or ISR (1h revalidate) | Full game card dataset baked at build |
+| `/games/[slug]` | SSG (all ~395 slugs generated at build) | Static, no revalidation needed |
+| `/search` | Server action (dynamic) | Results not cached; game card data shared with catalogue cache |
+| `/my-games` | Client-only (localStorage) | No server cache needed |
+| `/map` | SSG | `booths.json` + map image bundled at build |
+| `/map/[boothId]` | SSG or dynamic | Booth coordinates from bundled `booths.json`; game list from `byBooth` GSI (cache per-booth in sessionStorage) |
+| `/exhibitors` | SSG or ISR (1h revalidate) | If built |
+
+**HTTP headers**: Static assets (map images, `booths.json`) should have `Cache-Control: public, max-age=86400` (1 day). ISR pages use Next.js default stale-while-revalidate behavior.
+
+### Loading & Error States
+
+| State | Behavior |
+|-------|----------|
+| **Page loading** (SSG miss or ISR revalidation) | Show skeleton cards matching the game card layout. Use shadcn `Skeleton` component. |
+| **Search in progress** | Show text results immediately (fast path). Animated spinner next to "Searching..." label while semantic results load. |
+| **Map booth tap loading** | Skeleton inside bottom sheet while `byBooth` GSI query resolves. |
+| **DynamoDB unreachable** | SSG/ISR pages work from cache. Dynamic queries (search, map tap) show: "Something went wrong. Try again." with retry button. |
+| **Image load failure** | Fallback to exhibitor logo (if available), then a placeholder with game type icon (controller for video games, dice for tabletop). Use `next/image` with `onError` fallback. |
+| **Empty image** (`imageUrl: null`) | Same placeholder as image load failure. |
+
+### Offline Report Queueing
+
+The offline behavior table states that reports are "queued in localStorage, submitted when online." Implementation:
+
+```typescript
+interface PendingReport {
+  gameId: string;
+  gameName: string;
+  reportType: ReportType;
+  description: string | null;
+  username: string | null;
+  createdAt: string;       // ISO timestamp (set at creation time, not submission time)
+}
+
+// In localStorage:
+// "pendingReports": PendingReport[]
+```
+
+- When submitting a report offline (or if the server action fails): push to `pendingReports` array in localStorage, show success toast (user doesn't need to know it's queued)
+- On app load (in a `useEffect` at the layout level): check `pendingReports`, attempt to submit each via server action, remove on success
+- On `navigator.onLine` event: same flush logic
 
 ### Offline Behavior Summary
 
