@@ -1,8 +1,11 @@
-export default function SearchPage() {
-  return (
-    <div className="p-4">
-      <h1 className="text-2xl font-bold">Search</h1>
-      <p className="mt-2 text-muted-foreground">Search coming soon.</p>
-    </div>
-  );
+import type { Metadata } from "next";
+import { SearchPage } from "@/components/search-page";
+
+export const metadata: Metadata = {
+  title: "Search — PAX Pal 2026",
+  description: "Search PAX East 2026 games using text or natural language queries.",
+};
+
+export default function Page() {
+  return <SearchPage />;
 }

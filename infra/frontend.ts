@@ -1,8 +1,8 @@
 import { exhibitorsTable, gamesTable, reportsTable } from "./database.js";
-import { secrets } from "./secrets.js";
+import { geminiApiKey } from "./secrets.js";
+import { vectorIndex } from "./vectors.js";
 
 export const frontend = new sst.aws.Nextjs("www", {
   path: "apps/www",
-  environment: secrets,
-  link: [gamesTable, exhibitorsTable, reportsTable],
+  link: [gamesTable, exhibitorsTable, reportsTable, geminiApiKey, vectorIndex],
 });

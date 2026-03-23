@@ -17,6 +17,7 @@ export default $config({
   async run() {
     await import("./infra/secrets");
     await import("./infra/database");
+    await import("./infra/vectors");
     await import("./infra/frontend");
   },
 });

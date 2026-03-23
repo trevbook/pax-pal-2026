@@ -1,14 +1,22 @@
 // S3 Vectors resources are provisioned outside SST via the data pipeline's
 // `load` stage (or `setup-vectors` script) using @aws-sdk/client-s3vectors.
 //
-// Why not SST/Pulumi? @pulumi/aws-native triggers a gRPC serialization bug
-// in SST 3.19.3's bundled Pulumi 3.210.0 engine ("b.Va is not a function"
-// in registerResourceOutputs). See: https://github.com/sst/sst/issues/5266
-//
-// The vector index ARN, name, and bucket name are passed to the frontend
-// and load script via environment variables instead of SST resource linking.
-//
-// Expected env vars (set after running `just setup-vectors` or `just load`):
-//   VECTOR_INDEX_ARN
-//   VECTOR_INDEX_NAME
-//   VECTOR_BUCKET_NAME
+// This Linkable references the externally-created index and grants IAM
+// permissions to any linked consumer — without requiring @pulumi/aws-native
+// (which triggers a gRPC bug in SST 3.19.3). See: https://github.com/sst/sst/issues/5266
+
+const region = aws.getRegionOutput().name;
+const accountId = aws.getCallerIdentityOutput().accountId;
+const bucketName = "pax-pal-vectors-production";
+const indexName = "game-embeddings";
+const indexArn = $interpolate`arn:aws:s3vectors:${region}:${accountId}:bucket/${bucketName}/index/${indexName}`;
+
+export const vectorIndex = new sst.Linkable("VectorIndex", {
+  properties: { indexArn, indexName, vectorBucketName: bucketName },
+  include: [
+    sst.aws.permission({
+      actions: ["s3vectors:QueryVectors", "s3vectors:GetVectors", "s3vectors:ListVectors"],
+      resources: [indexArn],
+    }),
+  ],
+});

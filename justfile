@@ -55,6 +55,14 @@ sst-set-secret SECRET VALUE:
 sst-deploy:
     bunx sst deploy --stage production
 
+# Ensure S3 Vectors bucket and index exist
+setup-vectors:
+    bunx sst shell --stage {{STAGE}} -- bun run packages/data-pipeline/src/cli.ts setup-vectors
+
+# Set the Gemini API key for semantic search embeddings
+setup-search GEMINI_KEY:
+    just sst-set-secret GeminiApiKey {{GEMINI_KEY}}
+
 # Load pipeline data into AWS (DynamoDB + S3 Vectors)
 load *ARGS:
     bunx sst shell --stage {{STAGE}} -- bun run packages/data-pipeline/src/cli.ts load {{ARGS}}
