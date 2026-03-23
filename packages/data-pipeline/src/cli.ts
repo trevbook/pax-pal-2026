@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import type { InclusionTier } from "@pax-pal/core";
 import { discover } from "./discover/discover";
 import { enrich } from "./enrich/enrich";
 import { harmonize } from "./harmonize/harmonize";
@@ -148,7 +149,7 @@ async function runDiscover(skipCache: boolean, webSearch: boolean, tier3Limit?: 
   console.log("[discover] Done.");
 }
 
-async function runEnrich(skipCache: boolean, limit?: number) {
+async function runEnrich(skipCache: boolean, limit?: number, minTier?: string) {
   console.log("\n[enrich] Loading harmonized data...");
 
   const harmonizedDir = join(DATA_DIR, "02-harmonized");
@@ -162,6 +163,7 @@ async function runEnrich(skipCache: boolean, limit?: number) {
     steamCacheDir: join(DATA_DIR, "cache/enrich/steam"),
     skipCache,
     limit,
+    minInclusionTier: minTier as InclusionTier | undefined,
   });
 
   console.log(`  Stats: ${JSON.stringify(result.stats)}`);
@@ -185,7 +187,7 @@ type Stage = (typeof STAGES)[number];
 
 function printUsage() {
   console.log(
-    "Usage: bun run src/cli.ts <stage> [--source local|live] [--skip-cache] [--web-search] [--limit N]",
+    "Usage: bun run src/cli.ts <stage> [--source local|live] [--skip-cache] [--web-search] [--limit N] [--min-tier confirmed|high|medium|low]",
   );
   console.log(`Stages: ${STAGES.join(", ")}`);
 }
@@ -205,6 +207,8 @@ async function main() {
   const webSearch = args.includes("--web-search");
   const limitIdx = args.indexOf("--limit");
   const tier3Limit = limitIdx >= 0 ? Number.parseInt(args[limitIdx + 1], 10) : undefined;
+  const minTierIdx = args.indexOf("--min-tier");
+  const minTier = minTierIdx >= 0 ? args[minTierIdx + 1] : undefined;
 
   if (stage === "scrape" || stage === "all") {
     await runScrape(source);
@@ -219,7 +223,7 @@ async function main() {
   }
 
   if (stage === "enrich" || stage === "all") {
-    await runEnrich(skipCache, tier3Limit);
+    await runEnrich(skipCache, tier3Limit, minTier);
   }
 
   console.log("\nPipeline complete.");

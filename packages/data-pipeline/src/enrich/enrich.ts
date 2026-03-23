@@ -1,4 +1,4 @@
-import type { HarmonizedGame } from "@pax-pal/core";
+import type { HarmonizedGame, InclusionTier } from "@pax-pal/core";
 import type { BggResult } from "./bgg";
 import { runBggEnrichment } from "./bgg";
 import type { SteamResult } from "./steam";
@@ -25,6 +25,8 @@ export interface EnrichOptions {
   skipCache?: boolean;
   limit?: number;
   concurrency?: number;
+  /** Minimum inclusionTier required for discovered games. Games without discoveryMeta (confirmed demos) always pass. */
+  minInclusionTier?: InclusionTier;
   /** @internal — override for testing */
   _runBgg?: typeof runBggEnrichment;
   /** @internal — override for testing */
@@ -39,6 +41,23 @@ export interface EnrichResult {
   games: HarmonizedGame[];
   enrichmentMeta: EnrichmentMeta[];
   stats: EnrichStats;
+}
+
+// ---------------------------------------------------------------------------
+// Inclusion tier filtering
+// ---------------------------------------------------------------------------
+
+const TIER_RANK: Record<InclusionTier, number> = {
+  confirmed: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+};
+
+function meetsMinTier(game: HarmonizedGame, minTier: InclusionTier): boolean {
+  // Games without discoveryMeta are confirmed demos — always included
+  if (!game.discoveryMeta) return true;
+  return TIER_RANK[game.discoveryMeta.inclusionTier] <= TIER_RANK[minTier];
 }
 
 // ---------------------------------------------------------------------------
@@ -385,12 +404,22 @@ export async function enrich(
     skipCache = false,
     limit,
     concurrency,
+    minInclusionTier,
   } = options;
 
-  // Apply limit (random sample)
+  // Filter by inclusion tier (games without discoveryMeta always pass)
   let targetGames = games;
-  if (limit != null && limit > 0 && limit < games.length) {
-    const shuffled = [...games].sort(() => Math.random() - 0.5);
+  if (minInclusionTier) {
+    const before = targetGames.length;
+    targetGames = targetGames.filter((g) => meetsMinTier(g, minInclusionTier));
+    console.log(
+      `[enrich] Tier filter (>= ${minInclusionTier}): ${targetGames.length}/${before} games pass.`,
+    );
+  }
+
+  // Apply limit (random sample)
+  if (limit != null && limit > 0 && limit < targetGames.length) {
+    const shuffled = [...targetGames].sort(() => Math.random() - 0.5);
     targetGames = shuffled.slice(0, limit);
     console.log(`[enrich] Limiting to ${limit} random games.`);
   }

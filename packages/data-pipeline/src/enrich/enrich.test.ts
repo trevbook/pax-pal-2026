@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { HarmonizedGame } from "@pax-pal/core";
+import type { DiscoveryMeta, HarmonizedGame } from "@pax-pal/core";
 import type { EnrichOptions } from "./enrich";
 import {
   enrich,
@@ -583,6 +583,76 @@ describe("enrich orchestrator — scrubbing integration", () => {
     const meta = result.enrichmentMeta.find((m) => m.gameId === "v1");
     expect(meta?.web?.summary).toBe("A great game.");
     expect(meta?.web?.description).toBe("See the review for details.");
+  });
+
+  it("filters out games below minInclusionTier", async () => {
+    const confirmed = makeGame({ id: "c1", name: "Demo Game" }); // no discoveryMeta
+    const highTier = makeGame({
+      id: "h1",
+      name: "High Game",
+      discoveryMeta: {
+        inclusionTier: "high",
+        paxConfirmation: "none",
+        releaseStatus: "unreleased",
+        releaseYear: 2026,
+        evidenceSummary: "found it",
+        evidenceUrls: [],
+      } satisfies DiscoveryMeta,
+    });
+    const mediumTier = makeGame({
+      id: "m1",
+      name: "Medium Game",
+      discoveryMeta: {
+        inclusionTier: "medium",
+        paxConfirmation: "none",
+        releaseStatus: "unreleased",
+        releaseYear: 2026,
+        evidenceSummary: "maybe",
+        evidenceUrls: [],
+      } satisfies DiscoveryMeta,
+    });
+    const lowTier = makeGame({
+      id: "l1",
+      name: "Low Game",
+      discoveryMeta: {
+        inclusionTier: "low",
+        paxConfirmation: "none",
+        releaseStatus: "unknown",
+        releaseYear: null,
+        evidenceSummary: "unlikely",
+        evidenceUrls: [],
+      } satisfies DiscoveryMeta,
+    });
+
+    const result = await enrich([confirmed, highTier, mediumTier, lowTier], {
+      ...opts,
+      minInclusionTier: "high",
+    });
+
+    const ids = result.games.map((g) => g.id);
+    expect(ids).toContain("c1"); // no discoveryMeta → always included
+    expect(ids).toContain("h1"); // high meets high
+    expect(ids).not.toContain("m1"); // medium below high
+    expect(ids).not.toContain("l1"); // low below high
+    expect(result.stats.totalGames).toBe(2);
+  });
+
+  it("includes all games when minInclusionTier is not set", async () => {
+    const mediumTier = makeGame({
+      id: "m1",
+      name: "Medium Game",
+      discoveryMeta: {
+        inclusionTier: "medium",
+        paxConfirmation: "none",
+        releaseStatus: "unreleased",
+        releaseYear: 2026,
+        evidenceSummary: "maybe",
+        evidenceUrls: [],
+      } satisfies DiscoveryMeta,
+    });
+
+    const result = await enrich([mediumTier], opts);
+    expect(result.games.map((g) => g.id)).toContain("m1");
   });
 
   it("filters store pages from pressLinks", async () => {
