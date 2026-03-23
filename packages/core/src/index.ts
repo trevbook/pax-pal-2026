@@ -2,8 +2,11 @@
 export type {
   DiscoveryMeta,
   DiscoverySource,
+  ExhibitorDynamoItem,
   ExhibitorKind,
   Game,
+  GameDynamoItem,
+  GameStatus,
   HarmonizedExhibitor,
   HarmonizedGame,
   InclusionTier,
@@ -18,6 +21,7 @@ export type {
 export {
   DISCOVERY_SOURCES,
   EXHIBITOR_KINDS,
+  GAME_STATUSES,
   INCLUSION_TIERS,
   PAX_CONFIRMATIONS,
   PRESS_LINK_TYPES,

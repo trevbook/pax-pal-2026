@@ -20,7 +20,7 @@
 | 2.4 Enrich | ✅ Complete | BGG + LLM web search + Steam API + URL validation |
 | 2.5 Classify | ✅ Complete | Taxonomy overhaul + per-game LLM classification via gpt-5.4-nano |
 | 2.6 Embed | ✅ Complete | 3072d vectors via gemini-embedding-2-preview + Game assembly |
-| 3. Infrastructure | 📋 Planned | DynamoDB, SST deploy |
+| 3. Infrastructure | ✅ Complete | DynamoDB + S3 Vectors + SST deploy + load script |
 | 4. Frontend | 📋 Planned | Game browsing, search, tracking |
 
 ### Current data snapshot
@@ -876,11 +876,11 @@ packages/data-pipeline/src/embed/
 
 ### 3.1 DynamoDB Tables (SST)
 
-Two tables:
+Two tables defined in `infra/database.ts` using `sst.aws.Dynamo`:
 
 ```typescript
-// Games table
-export const gamesTable = new sst.aws.DynamoTable("Games", {
+// Games table — PK: "GAME#{id}"
+export const gamesTable = new sst.aws.Dynamo("Games", {
   fields: { pk: "string", type: "string", name: "string", boothId: "string" },
   primaryIndex: { hashKey: "pk" },
   globalIndexes: {
@@ -889,8 +889,8 @@ export const gamesTable = new sst.aws.DynamoTable("Games", {
   },
 });
 
-// Exhibitors table
-export const exhibitorsTable = new sst.aws.DynamoTable("Exhibitors", {
+// Exhibitors table — PK: "EXHIBITOR#{id}"
+export const exhibitorsTable = new sst.aws.Dynamo("Exhibitors", {
   fields: { pk: "string", kind: "string", name: "string" },
   primaryIndex: { hashKey: "pk" },
   globalIndexes: {
@@ -899,12 +899,25 @@ export const exhibitorsTable = new sst.aws.DynamoTable("Exhibitors", {
 });
 ```
 
-### 3.2 Load Script
+Both tables are linked to the Next.js app in `infra/frontend.ts` via `link: [gamesTable, exhibitorsTable]`.
 
-- Read `05-embedded/games.json` and `02-harmonized/exhibitors.json`
-- Batch-write to DynamoDB (25 items per batch)
-- PK format: `GAME#{id}` and `EXHIBITOR#{id}`
-- Skip unchanged items on re-run
+### 3.2 S3 Vectors (SDK-provisioned)
+
+S3 Vectors bucket + index for semantic search embeddings. Provisioned via `@aws-sdk/client-s3vectors` in the load script (not SST/Pulumi — `@pulumi/aws-native` triggers a gRPC serialization bug in SST 3.19.3, see `infra/vectors.ts` for details).
+
+- **Bucket**: `pax-pal-vectors-production`
+- **Index**: `game-embeddings` (3072d, float32, cosine distance)
+- **Metadata per vector**: `name`, `type`, `exhibitorId`, `boothId` (enables filtered queries)
+- Auto-created by the `load` stage (idempotent) or standalone via `setup-vectors`
+
+### 3.3 Load Script
+
+New `load` stage in `packages/data-pipeline/src/load/`:
+
+- Reads `05-embedded/games.json` (395 games) and `02-harmonized/exhibitors.json` (373 exhibitors)
+- **DynamoDB**: Strips embeddings from games, adds `pk`, `status: "active"`, `_contentHash`, maps GSI keys (`boothId`, `kind`). Batch-writes in groups of 25.
+- **S3 Vectors**: PutVectors in batches of 50 with metadata for filtered queries. Skips games without embeddings.
+- Resolves table names automatically via `sst shell` (imports `Resource` from `sst`) or falls back to `GAMES_TABLE_NAME` / `EXHIBITORS_TABLE_NAME` env vars.
 
 **Data quality: load everything, filter downstream.** The classify stage identified ~3-4 false-positive "games" (apparel products misidentified by discover) that have no genres or tags. These are loaded into DynamoDB anyway — they should NOT be filtered at load time. Reasons:
 
@@ -914,15 +927,57 @@ export const exhibitorsTable = new sst.aws.DynamoTable("Exhibitors", {
 
 This keeps all data available for review while hiding it from end users. Only ~3-4 records out of 395 are affected.
 
-### 3.3 Deploy + Verify
+### 3.4 Deploy + Verify
 
-- `sst deploy --stage dev`
-- Run load script
-- Verify in AWS Console
+```bash
+just sst-deploy    # Deploys DynamoDB tables + Next.js to production
+just load          # Auto-provisions S3 Vectors + loads all data (runs via sst shell)
+just load --dry-run  # Preview without writing
+```
 
-### 3.4 Wire Frontend
+### 3.5 Core Type Additions
 
-Link both tables to the Next.js app via SST resource linking.
+- `packages/core/src/game.ts` — Added `GameStatus`, `GameDynamoItem`, `ExhibitorDynamoItem`
+- `packages/data-pipeline/package.json` — Added `@aws-sdk/client-dynamodb`, `@aws-sdk/lib-dynamodb`, `@aws-sdk/client-s3vectors`
+
+### Implementation notes (completed 2026-03-23)
+
+**Deviation from plan:** S3 Vectors are provisioned via `@aws-sdk/client-s3vectors` SDK calls instead of SST/Pulumi. `@pulumi/aws-native` triggers a gRPC serialization bug (`b.Va is not a function` in `registerResourceOutputs`) in SST 3.19.3's bundled Pulumi 3.210.0 engine. The SDK approach is simpler — the load script auto-creates the bucket and index idempotently, no separate infra step needed.
+
+**Deviation from plan:** Used `sst.aws.Dynamo` (correct SST v3 component name), not `sst.aws.DynamoTable` (which doesn't exist).
+
+**Files created:**
+
+```
+infra/database.ts                              # DynamoDB table definitions
+infra/vectors.ts                               # Documentation-only (explains SDK approach)
+packages/data-pipeline/src/load/
+├── types.ts                                   # LoadStats, LoadOptions
+├── load.ts                                    # Orchestrator + setupVectors + batch helpers
+└── load.test.ts                               # 22 tests (transforms, hashing, DI mocks)
+```
+
+**Files modified:**
+
+- `sst.config.ts` — Imports `infra/database`
+- `infra/frontend.ts` — Links DynamoDB tables to Next.js
+- `packages/core/src/game.ts` — Added `GameStatus`, `GameDynamoItem`, `ExhibitorDynamoItem`
+- `packages/core/src/index.ts` — Exports new types
+- `packages/data-pipeline/src/cli.ts` — Added `load` and `setup-vectors` stages, `--dry-run` flag, SST Resource auto-resolution
+- `packages/data-pipeline/src/index.ts` — Exports load module
+- `packages/data-pipeline/package.json` — Added AWS SDK deps + `load` script
+- `packages/data-pipeline/README.md` — Documented load stage
+- `justfile` — Added `STAGE` variable (default: production), `load` command via `sst shell`
+
+**Test count:** 22 new tests. All 291 project tests pass.
+
+**Production data (verified via AWS CLI):**
+
+| Resource | Count |
+|----------|-------|
+| Games table items | 395 |
+| Exhibitors table items | 373 |
+| S3 Vectors index | `game-embeddings` (3072d, cosine) |
 
 ---
 

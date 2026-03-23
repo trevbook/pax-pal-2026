@@ -24,6 +24,9 @@ export type {
 } from "./enrich/types";
 export type { HarmonizeResult } from "./harmonize/harmonize";
 export { harmonize } from "./harmonize/harmonize";
+export type { LoadResult, SetupVectorsResult } from "./load/load";
+export { load, setupVectors } from "./load/load";
+export type { LoadStats } from "./load/types";
 export { transformDemos, transformExhibitors } from "./scrape/api";
 export { parseDemoPage } from "./scrape/demos";
 export { parseExhibitorPage } from "./scrape/exhibitors";

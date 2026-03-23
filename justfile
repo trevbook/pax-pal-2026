@@ -1,6 +1,8 @@
 set dotenv-load := true
 set export := true
 
+STAGE := "production"
+
 # Default: show available commands
 default:
     @just --list
@@ -43,14 +45,18 @@ dev:
 
 # Start SST dev mode
 sst-dev:
-    bunx sst dev
+    bunx sst dev --stage {{STAGE}}
 
 # Set an SST secret
 sst-set-secret SECRET VALUE:
-    bunx sst secret set {{SECRET}} {{VALUE}}
+    bunx sst secret set {{SECRET}} {{VALUE}} --stage {{STAGE}}
 
 # Deploy with SST
 sst-deploy:
-    bunx sst deploy
+    bunx sst deploy --stage {{STAGE}}
+
+# Load pipeline data into AWS (DynamoDB + S3 Vectors)
+load *ARGS:
+    bunx sst shell --stage {{STAGE}} -- bun run packages/data-pipeline/src/cli.ts load {{ARGS}}
 
 

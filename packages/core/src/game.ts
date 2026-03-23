@@ -232,3 +232,32 @@ export interface Game {
   lastScrapedAt: string;
   enrichedAt: string | null;
 }
+
+// ---------------------------------------------------------------------------
+// DynamoDB item types — used at load time, not in the pipeline
+// ---------------------------------------------------------------------------
+
+export const GAME_STATUSES = ["active", "hidden"] as const;
+export type GameStatus = (typeof GAME_STATUSES)[number];
+
+/** Game record as stored in DynamoDB (embedding stripped, PK + status added). */
+export interface GameDynamoItem extends Omit<Game, "embedding"> {
+  /** DynamoDB partition key: `GAME#{id}` */
+  pk: string;
+  /** Visibility status for data quality filtering. Defaults to "active" at load time. */
+  status: GameStatus;
+  /** SHA-256 content hash for skip-unchanged detection on re-runs. */
+  _contentHash: string;
+}
+
+/** Exhibitor record as stored in DynamoDB. */
+export interface ExhibitorDynamoItem extends HarmonizedExhibitor {
+  /** DynamoDB partition key: `EXHIBITOR#{id}` */
+  pk: string;
+  /** Maps exhibitorKind to the GSI key name. */
+  kind: string | null;
+  /** Visibility status for data quality filtering. Defaults to "active" at load time. */
+  status: GameStatus;
+  /** SHA-256 content hash for skip-unchanged detection on re-runs. */
+  _contentHash: string;
+}

@@ -14,10 +14,14 @@
     "discover": "bun run src/cli.ts discover",
     "enrich": "bun run src/cli.ts enrich",
     "classify": "bun run src/cli.ts classify",
-    "embed": "bun run src/cli.ts embed"
+    "embed": "bun run src/cli.ts embed",
+    "load": "bun run src/cli.ts load"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.41",
+    "@aws-sdk/client-dynamodb": "^3.1014.0",
+    "@aws-sdk/client-s3vectors": "^3.1014.0",
+    "@aws-sdk/lib-dynamodb": "^3.1014.0",
     "@google/genai": "^1.46.0",
     "@pax-pal/core": "workspace:*",
     "ai": "^6.0.116",

@@ -7,10 +7,16 @@ export default $config({
       removal: input?.stage === "production" ? "retain" : "remove",
       protect: ["production"].includes(input?.stage),
       home: "aws",
+      providers: {
+        aws: {
+          ...(!process.env.CI && { profile: "personal" }),
+        },
+      },
     };
   },
   async run() {
     await import("./infra/secrets");
+    await import("./infra/database");
     await import("./infra/frontend");
   },
 });
