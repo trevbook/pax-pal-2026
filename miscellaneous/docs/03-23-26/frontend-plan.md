@@ -25,7 +25,7 @@ The goal is that any future Claude (or human) picking up this plan can read the 
 
 | Stage | Status | Notes |
 |-------|--------|-------|
-| 1. App Scaffold & Layout | 📋 Planned | Routing, nav, theme, metadata |
+| 1. App Scaffold & Layout | ✅ Complete | Routing, nav, theme, metadata |
 | 2. Data Layer & Shared Components | 📋 Planned | DynamoDB access, GameCardData, reusable components |
 | 3. Game Catalogue | 📋 Planned | `/games` — browse + filter |
 | 4. Game Detail & Tracking | 📋 Planned | `/games/[slug]` + localStorage tracking system |
@@ -112,7 +112,17 @@ apps/www/app/globals.css      (theme tokens, brand colors)
 
 ### Implementation notes
 
-*(To be filled in during implementation.)*
+**Completed 2026-03-23.**
+
+- **Layout**: Replaced boilerplate `layout.tsx` with app shell: `TopHeader` + `<main>` + `BottomNav`. Main content area uses `min-h-[calc(100dvh-theme(spacing.12)-theme(spacing.14))]` and `pb-14` to account for the fixed bottom nav.
+- **Metadata**: Set title "PAX Pal 2026", description, and viewport (`device-width`, `viewportFit: cover` for notched phones). Exported `viewport` as a separate constant per Next.js 16 convention.
+- **Fonts**: Kept Geist Sans + Geist Mono from the scaffold — no reason to change.
+- **TopHeader** (`components/top-header.tsx`): Sticky, 48px height, "PAX Pal" wordmark left-aligned. Uses `backdrop-blur-sm` for a translucent effect on scroll.
+- **BottomNav** (`components/bottom-nav.tsx`): Client component. Five tabs (Home, Games, Search, Map, My Games) using lucide-react icons. Active tab determined by `usePathname()` — exact match for `/`, prefix match for others. Fixed bottom with `pb-[env(safe-area-inset-bottom)]` for notched phones. 56px (h-14) height.
+- **Route stubs**: All 6 route stubs created with simple heading + placeholder text. Dynamic routes (`[slug]`, `[boothId]`) use Next.js 16's `params: Promise<{...}>` pattern with `await`.
+- **Theme**: No brand color changes yet — kept shadcn defaults (neutral). Brand colors can be tuned in Stage 8 (Polish) or earlier if a designer provides them.
+- **Responsive breakpoints**: Tailwind v4 defaults cover the spec's needs (sm: 640px, md: 768px, lg: 1024px). The 375px min-width constraint is handled naturally by mobile-first CSS.
+- **Deviations**: None significant. The plan mentioned a `BottomSheet` component — that's deferred to Stage 2 per the plan.
 
 ---
 
