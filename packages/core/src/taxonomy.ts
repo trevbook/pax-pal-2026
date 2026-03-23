@@ -23,13 +23,31 @@ export const VIDEO_GAME_GENRES = [
   "Roguelike",
   "RPG",
   "JRPG",
-  "Sandbox",
   "Shooter",
   "Strategy",
   "Simulation",
-  "Retro",
+  "Survival",
+  "MMO",
+  "Racing",
+  "Rhythm",
+  "Sports",
+  "Tower Defense",
+  "Visual Novel",
+  "Metroidvania",
+  "Souls-like",
 ] as const;
 export type VideoGameGenre = (typeof VIDEO_GAME_GENRES)[number];
+
+export const TABLETOP_GENRES = [
+  "Board Game",
+  "Card Game",
+  "Miniatures",
+  "RPG/TTRPG",
+  "Party Game",
+  "War Game",
+  "Escape Room",
+] as const;
+export type TabletopGenre = (typeof TABLETOP_GENRES)[number];
 
 export const TABLETOP_MECHANICS = [
   "Deck-Builder",
@@ -39,8 +57,26 @@ export const TABLETOP_MECHANICS = [
   "Worker Placement",
   "Area Control",
   "Roll-and-Write",
+  "Hand Management",
+  "Set Collection",
+  "Drafting",
+  "Tile Placement",
+  "Push Your Luck",
+  "Deduction",
+  "Engine Building",
+  "Negotiation",
 ] as const;
 export type TabletopMechanic = (typeof TABLETOP_MECHANICS)[number];
+
+export const STYLE_TAGS = [
+  "Retro",
+  "Pixel Art",
+  "Cozy",
+  "Narrative-Driven",
+  "Sandbox",
+  "Open World",
+] as const;
+export type StyleTag = (typeof STYLE_TAGS)[number];
 
 export const AUDIENCE_TAGS = [
   "Family-Friendly",
@@ -48,6 +84,9 @@ export const AUDIENCE_TAGS = [
   "Multiplayer",
   "Co-op",
   "PAX Together",
+  "Competitive",
+  "Local Multiplayer",
+  "Online Multiplayer",
 ] as const;
 export type AudienceTag = (typeof AUDIENCE_TAGS)[number];
 
@@ -60,7 +99,9 @@ export type OtherTag = (typeof OTHER_TAGS)[number];
 /** All possible tag values across every category. */
 export const ALL_TAGS = [
   ...VIDEO_GAME_GENRES,
+  ...TABLETOP_GENRES,
   ...TABLETOP_MECHANICS,
+  ...STYLE_TAGS,
   ...AUDIENCE_TAGS,
   ...BUSINESS_TAGS,
   ...OTHER_TAGS,

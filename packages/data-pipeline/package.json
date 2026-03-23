@@ -12,10 +12,13 @@
     "scrape": "bun run src/cli.ts scrape",
     "harmonize": "bun run src/cli.ts harmonize",
     "discover": "bun run src/cli.ts discover",
-    "enrich": "bun run src/cli.ts enrich"
+    "enrich": "bun run src/cli.ts enrich",
+    "classify": "bun run src/cli.ts classify",
+    "embed": "bun run src/cli.ts embed"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.41",
+    "@google/genai": "^1.46.0",
     "@pax-pal/core": "workspace:*",
     "ai": "^6.0.116",
     "cheerio": "^1.0.0",

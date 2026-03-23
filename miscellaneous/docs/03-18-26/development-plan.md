@@ -18,8 +18,8 @@
 | 2.3 Discover (Tier 2) | ✅ Complete | LLM classification via AI SDK v6 + gpt-5.4-mini |
 | 2.3 Discover (Tier 3) | ✅ Complete | Web search agent via AI SDK v6 + OpenAI Responses API |
 | 2.4 Enrich | ✅ Complete | BGG + LLM web search + Steam API + URL validation |
-| 2.5 Classify | 📋 Planned | Taxonomy label assignment |
-| 2.6 Embed | 📋 Planned | Semantic search vectors |
+| 2.5 Classify | ✅ Complete | Taxonomy overhaul + per-game LLM classification via gpt-5.4-nano |
+| 2.6 Embed | ✅ Complete | 3072d vectors via gemini-embedding-2-preview + Game assembly |
 | 3. Infrastructure | 📋 Planned | DynamoDB, SST deploy |
 | 4. Frontend | 📋 Planned | Game browsing, search, tracking |
 
@@ -774,35 +774,99 @@ packages/data-pipeline/src/enrich/
 
 ## Stage 2.5: Classify
 
-**Input**: `03-enriched/games.json`
-**Output**: `miscellaneous/data/04-classified/games.json`
+**Input**: `03-enriched/games.json` + `03-enriched/enrichment-meta.json`
+**Output**: `04-classified/games.json` + `04-classified/classifications.json`
 
-Use Gemini structured output to assign taxonomy labels from `@pax-pal/core`:
+### Taxonomy overhaul
 
-- Feed each game's name + description + existing tags
-- Request structured output matching taxonomy constants
-- Validate against allowed values
-- Overwrite `tags` field with normalized taxonomy labels, preserve `paxTags`
+Expanded `packages/core/src/taxonomy.ts` based on data-driven analysis (see `miscellaneous/python/explore_taxonomy.py`):
 
-Could potentially be combined with the enrich step (single LLM call does both), but keeping them separate makes debugging easier and allows re-running classification without re-enriching.
+- **VIDEO_GAME_GENRES**: 14 → 21 (added Survival, MMO, Racing, Rhythm, Sports, Tower Defense, Visual Novel, Metroidvania, Souls-like; moved Retro/Sandbox to style tags)
+- **TABLETOP_GENRES**: New category — 7 values (Board Game, Card Game, Miniatures, RPG/TTRPG, Party Game, War Game, Escape Room)
+- **TABLETOP_MECHANICS**: 7 → 15 (added Hand Management, Set Collection, Drafting, Tile Placement, Push Your Luck, Deduction, Engine Building, Negotiation)
+- **STYLE_TAGS**: New category — 6 values (Retro, Pixel Art, Cozy, Narrative-Driven, Sandbox, Open World)
+- **AUDIENCE_TAGS**: 5 → 8 (added Competitive, Local Multiplayer, Online Multiplayer)
 
-**Estimated effort**: Half a day (shares LLM infrastructure with enrich)
+New fields on `Game` interface: `tabletopGenres: TabletopGenre[] | null`, `styleTags: StyleTag[]`.
+
+### Classification approach
+
+Per-game `generateObject` calls to `gpt-5.4-nano` with Zod schema validation, 10 concurrent. Each game gets:
+- Name, type, filtered paxTags, description (truncated 500 chars)
+- Enrichment signals: web genres, web mechanics, BGG mechanics, Steam genres/categories
+- System prompt with full taxonomy reference + paxTag→taxonomy mapping hints
+
+**Key design decisions:**
+- paxTags that map to style tags ("Retro", "Sandbox") are filtered from the prompt — they're often inherited from the exhibitor, not game-specific. Style tags are only assigned when description/enrichment data supports them.
+- Non-classification paxTags ("Expo Hall", "Merch", "Peripherals", etc.) also filtered.
+- 1 game per LLM call (not batched) — prevents label bleed across games; prompt caching makes it efficient.
+- Classifications stored as a separate `classifications.json` keyed by game ID, not merged onto the game objects. The embed stage reads both files.
+
+### Implementation notes (completed 2026-03-22)
+
+**Files created:**
+
+```
+packages/data-pipeline/src/classify/
+├── types.ts              # Zod schemas (gameClassificationSchema, batchClassificationSchema)
+├── classify.ts           # classifyOne, buildGamePrompt, buildTags, classify orchestrator
+└── classify.test.ts      # 11 tests (prompt construction, buildTags, orchestrator DI)
+```
+
+Also: `miscellaneous/python/explore_taxonomy.py` — data analysis script for taxonomy design.
+
+**Files modified:**
+
+- `packages/core/src/taxonomy.ts` — Expanded with new categories and values
+- `packages/core/src/game.ts` — Added `tabletopGenres`, `styleTags` fields to `Game`; new imports
+- `packages/core/src/index.ts` — Exports new types (`TabletopGenre`, `StyleTag`, `TABLETOP_GENRES`, `STYLE_TAGS`)
+- `packages/data-pipeline/src/cli.ts` — Added `classify` and `embed` stages
+- `packages/data-pipeline/src/index.ts` — Exports classify and embed modules
+- `packages/data-pipeline/package.json` — Added `classify` and `embed` scripts; `@google/genai` dependency
+
+**Caching:** Per-game JSON at `cache/classify/{gameId}.json`. `--skip-cache` forces re-classification.
+
+**Results (395 games):** Top genres: Adventure (162), Action (139), RPG (104). Tabletop: Card Game (55), Board Game (47), RPG/TTRPG (42). Style tags selective: Narrative-Driven (63), Cozy (28), Retro (17). 4 games with no genres (3 were apparel products misidentified by discover; 1 had too-sparse description).
 
 ---
 
 ## Stage 2.6: Embed
 
-**Input**: `04-classified/games.json`
-**Output**: `miscellaneous/data/05-embedded/games.json`
+**Input**: `04-classified/games.json` + `04-classified/classifications.json` + `03-enriched/enrichment-meta.json`
+**Output**: `05-embedded/games.json` (final `Game[]`)
 
-For each game:
-1. Concatenate: `name + " " + summary + " " + tags.join(", ") + " " + description`
-2. Call Gemini `gemini-embedding-001` to generate 768d vector
-3. Store as `embedding: number[]` on the game object
-4. Batch embedding calls
-5. Skip games with existing embeddings (unless description changed)
+### Embedding
 
-**Estimated effort**: Half a day
+`gemini-embedding-2-preview` via `@google/genai`, producing 3072d vectors. Per-game embedding text concatenates: name, summary/description, classified genres/mechanics, paxTags, type, exhibitor. Batched 100 texts per API call.
+
+### Game assembly
+
+The embed stage is also the "finalize" step that assembles the final `Game` type from all prior stage outputs:
+
+1. Classified games (genres, mechanics, tags, platforms)
+2. Enrichment sidecar (summary, pressLinks, socialLinks, steamAppId, bggId, price, mediaUrls)
+3. Embedding vector
+
+Assembly logic in `assembleGame()`: image priority Steam > web > BGG > original; description priority web > BGG > original; tabletop fields prefer BGG over web.
+
+### Implementation notes (completed 2026-03-22)
+
+**Files created:**
+
+```
+packages/data-pipeline/src/embed/
+├── types.ts              # EmbedStats, CachedEmbedding
+├── embed.ts              # buildEmbeddingText, assembleGame, embed orchestrator
+└── embed.test.ts         # 17 tests (text builder, hash, assembly, orchestrator DI)
+```
+
+**Dependencies added:** `@google/genai@^1.46.0`
+
+**Environment variable:** `GEMINI_API_KEY`
+
+**Caching:** Per-game at `cache/embed/{gameId}.json` with `textHash` for invalidation (SHA-256 of input text — re-embeds if classification or description changes).
+
+**Results (395 games):** 395/395 embedded (3072d), 392/395 with tags, 395/395 with summaries, 319/395 with press links, 218/395 with Steam IDs.
 
 ---
 

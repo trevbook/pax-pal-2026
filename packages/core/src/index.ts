@@ -29,6 +29,8 @@ export type {
   GameType,
   OtherTag,
   Platform,
+  StyleTag,
+  TabletopGenre,
   TabletopMechanic,
   Tag,
   VideoGameGenre,
@@ -41,6 +43,8 @@ export {
   GAME_TYPES,
   OTHER_TAGS,
   PLATFORMS,
+  STYLE_TAGS,
+  TABLETOP_GENRES,
   TABLETOP_MECHANICS,
   VIDEO_GAME_GENRES,
 } from "./taxonomy";

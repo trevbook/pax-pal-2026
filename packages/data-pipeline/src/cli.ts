@@ -1,8 +1,12 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { HarmonizedGame, InclusionTier } from "@pax-pal/core";
+import { classify } from "./classify/classify";
+import type { GameClassification } from "./classify/types";
 import { discover } from "./discover/discover";
+import { embed } from "./embed/embed";
 import { enrich } from "./enrich/enrich";
+import type { EnrichmentMeta } from "./enrich/types";
 import { harmonize } from "./harmonize/harmonize";
 import { reconcileWithCaches } from "./reconcile/reconcile";
 import { transformDemos, transformExhibitors } from "./scrape/api";
@@ -230,11 +234,82 @@ async function runEnrich(skipCache: boolean, limit?: number, minTier?: string) {
   console.log("[enrich] Done.");
 }
 
+async function runClassify(skipCache: boolean, limit?: number) {
+  console.log("\n[classify] Loading enriched data...");
+
+  const enrichedDir = join(DATA_DIR, "03-enriched");
+  const [games, enrichmentMeta] = await Promise.all([
+    Bun.file(join(enrichedDir, "games.json")).json() as Promise<HarmonizedGame[]>,
+    Bun.file(join(enrichedDir, "enrichment-meta.json")).json() as Promise<EnrichmentMeta[]>,
+  ]);
+
+  console.log(`  Games to classify: ${games.length}`);
+  console.log(`  Enrichment meta records: ${enrichmentMeta.length}`);
+
+  const result = await classify(games, enrichmentMeta, {
+    cacheDir: join(DATA_DIR, "cache/classify"),
+    skipCache,
+    limit,
+  });
+
+  console.log(`  Stats: ${JSON.stringify(result.stats)}`);
+
+  const outDir = join(DATA_DIR, "04-classified");
+  await ensureDir(outDir);
+
+  // Serialize classifications as a JSON object keyed by game ID
+  const classificationsObj: Record<string, unknown> = {};
+  for (const [id, cls] of result.classifications) {
+    classificationsObj[id] = cls;
+  }
+
+  await Promise.all([
+    writeJson(join(outDir, "games.json"), result.games),
+    writeJson(join(outDir, "classifications.json"), classificationsObj),
+  ]);
+
+  console.log("[classify] Done.");
+}
+
+async function runEmbed(skipCache: boolean, limit?: number) {
+  console.log("\n[embed] Loading classified data...");
+
+  const classifiedDir = join(DATA_DIR, "04-classified");
+  const enrichedDir = join(DATA_DIR, "03-enriched");
+  const [games, enrichmentMeta, classificationsObj] = await Promise.all([
+    Bun.file(join(classifiedDir, "games.json")).json() as Promise<HarmonizedGame[]>,
+    Bun.file(join(enrichedDir, "enrichment-meta.json")).json() as Promise<EnrichmentMeta[]>,
+    Bun.file(join(classifiedDir, "classifications.json")).json() as Promise<
+      Record<string, GameClassification>
+    >,
+  ]);
+
+  // Rebuild Map from serialized object
+  const classifications = new Map<string, GameClassification>(Object.entries(classificationsObj));
+
+  console.log(`  Games to embed: ${games.length}`);
+  console.log(`  Classifications: ${classifications.size}`);
+
+  const result = await embed(games, enrichmentMeta, classifications, {
+    cacheDir: join(DATA_DIR, "cache/embed"),
+    skipCache,
+    limit,
+  });
+
+  console.log(`  Stats: ${JSON.stringify(result.stats)}`);
+
+  const outDir = join(DATA_DIR, "05-embedded");
+  await ensureDir(outDir);
+  await writeJson(join(outDir, "games.json"), result.games);
+
+  console.log("[embed] Done.");
+}
+
 // ---------------------------------------------------------------------------
 // CLI entry point
 // ---------------------------------------------------------------------------
 
-const STAGES = ["scrape", "harmonize", "discover", "enrich", "all"] as const;
+const STAGES = ["scrape", "harmonize", "discover", "enrich", "classify", "embed", "all"] as const;
 type Stage = (typeof STAGES)[number];
 
 function printUsage() {
@@ -276,6 +351,14 @@ async function main() {
 
   if (stage === "enrich" || stage === "all") {
     await runEnrich(skipCache, tier3Limit, minTier);
+  }
+
+  if (stage === "classify" || stage === "all") {
+    await runClassify(skipCache, tier3Limit);
+  }
+
+  if (stage === "embed" || stage === "all") {
+    await runEmbed(skipCache, tier3Limit);
   }
 
   console.log("\nPipeline complete.");

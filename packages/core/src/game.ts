@@ -1,4 +1,12 @@
-import type { GameType, Platform, TabletopMechanic, Tag, VideoGameGenre } from "./taxonomy";
+import type {
+  GameType,
+  Platform,
+  StyleTag,
+  TabletopGenre,
+  TabletopMechanic,
+  Tag,
+  VideoGameGenre,
+} from "./taxonomy";
 
 // ---------------------------------------------------------------------------
 // Discovery-stage constants
@@ -190,6 +198,7 @@ export interface Game {
   // Classification
   tags: Tag[];
   paxTags: string[];
+  styleTags: StyleTag[];
   isFeatured: boolean;
 
   // Video game fields (nullable — only present for video_game / both)
@@ -209,6 +218,7 @@ export interface Game {
   price: string | null;
 
   // Tabletop fields (nullable — only present for tabletop / both)
+  tabletopGenres: TabletopGenre[] | null;
   playerCount: string | null;
   playTime: string | null;
   complexity: number | null;
