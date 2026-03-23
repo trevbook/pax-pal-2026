@@ -1,9 +1,10 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { InclusionTier } from "@pax-pal/core";
+import type { HarmonizedGame, InclusionTier } from "@pax-pal/core";
 import { discover } from "./discover/discover";
 import { enrich } from "./enrich/enrich";
 import { harmonize } from "./harmonize/harmonize";
+import { reconcileWithCaches } from "./reconcile/reconcile";
 import { transformDemos, transformExhibitors } from "./scrape/api";
 import { parseDemoPage } from "./scrape/demos";
 import { parseExhibitorPage } from "./scrape/exhibitors";
@@ -117,6 +118,7 @@ async function runDiscover(skipCache: boolean, webSearch: boolean, tier3Limit?: 
   console.log("\n[discover] Loading harmonized data...");
 
   const harmonizedDir = join(DATA_DIR, "02-harmonized");
+  const prevGamesPath = join(harmonizedDir, "games.prev.json");
   const [exhibitors, allGames] = await Promise.all([
     Bun.file(join(harmonizedDir, "exhibitors.json")).json(),
     Bun.file(join(harmonizedDir, "games.json")).json(),
@@ -124,11 +126,57 @@ async function runDiscover(skipCache: boolean, webSearch: boolean, tier3Limit?: 
 
   // Only pass demo-sourced games to discover — previously discovered games
   // are rebuilt fresh each run, so including them would cause duplicates.
-  const demoGames = allGames.filter((g: { demoId: string | null }) => g.demoId !== null);
+  const demoGames = (allGames as HarmonizedGame[]).filter((g) => g.demoId !== null);
+
+  // Reconcile: compare fresh demo games against previous discover output
+  // to detect promotions (discovered → demo) and carry forward orphans.
+  let reconciledGames = demoGames;
+  const prevFile = Bun.file(prevGamesPath);
+  if (await prevFile.exists()) {
+    console.log("\n[reconcile] Previous games snapshot found, running reconciliation...");
+    const previousGames: HarmonizedGame[] = await prevFile.json();
+
+    const reconciled = await reconcileWithCaches(demoGames, previousGames, {
+      enrichCacheDirs: {
+        bgg: join(DATA_DIR, "cache/enrich/bgg"),
+        web: join(DATA_DIR, "cache/enrich/web"),
+        steam: join(DATA_DIR, "cache/enrich/steam"),
+      },
+    });
+
+    reconciledGames = reconciled.games;
+
+    console.log(`  Previous discovered games: ${reconciled.stats.previousDiscoveredGames}`);
+    console.log(`  Promoted (discovered → demo): ${reconciled.stats.promoted}`);
+    console.log(`  Orphaned (carried forward): ${reconciled.stats.orphaned}`);
+    console.log(`  Regenerated (discover will rebuild): ${reconciled.stats.regenerated}`);
+    console.log(`  Enrich caches migrated: ${reconciled.stats.cachesMigrated}`);
+
+    if (reconciled.promotions.length > 0) {
+      console.log("  Promotions:");
+      for (const p of reconciled.promotions) {
+        console.log(`    ${p.gameName}: ${p.oldId} → ${p.newId}`);
+      }
+    }
+
+    // Save reconciliation report
+    await writeJson(join(harmonizedDir, "reconciliation.json"), {
+      promotions: reconciled.promotions,
+      orphanedDiscoveries: reconciled.orphanedDiscoveries.map((o) => ({
+        id: o.game.id,
+        name: o.game.name,
+        exhibitorId: o.game.exhibitorId,
+        reason: o.reason,
+      })),
+      stats: reconciled.stats,
+    });
+  } else {
+    console.log("\n[reconcile] No previous games snapshot — skipping reconciliation (first run).");
+  }
 
   const cacheDir = join(DATA_DIR, "cache/discover/tier2");
   const tier3CacheDir = join(DATA_DIR, "cache/discover/tier3");
-  const result = await discover(exhibitors, demoGames, {
+  const result = await discover(exhibitors, reconciledGames, {
     cacheDir,
     tier3CacheDir,
     skipCache,
@@ -140,6 +188,10 @@ async function runDiscover(skipCache: boolean, webSearch: boolean, tier3Limit?: 
   console.log(`  Stats: ${JSON.stringify(result.stats)}`);
 
   await ensureDir(harmonizedDir);
+
+  // Save current games as snapshot for next reconciliation run
+  await writeJson(prevGamesPath, result.games);
+
   await Promise.all([
     writeJson(join(harmonizedDir, "exhibitors.json"), result.exhibitors),
     writeJson(join(harmonizedDir, "games.json"), result.games),
