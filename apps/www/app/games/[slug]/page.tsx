@@ -5,6 +5,8 @@ import { notFound } from "next/navigation";
 import { GameCard } from "@/components/game-card";
 import { GameDetailClient } from "@/components/game-detail-client";
 import { GameImage } from "@/components/game-image";
+import { MediaGallery } from "@/components/media-gallery";
+import { PressLinks } from "@/components/press-links";
 import { TagChip } from "@/components/tag-chip";
 import { TypeBadge } from "@/components/type-badge";
 import { Button } from "@/components/ui/button";
@@ -134,6 +136,13 @@ export default async function GameDetailPage({ params }: { params: Promise<{ slu
             <p className="whitespace-pre-line text-sm leading-relaxed text-foreground/90">
               {game.description}
             </p>
+          </div>
+        )}
+
+        {/* Media gallery — client component, lazy-loaded images */}
+        {game.mediaUrls && game.mediaUrls.length > 0 && (
+          <div className="mt-6">
+            <MediaGallery urls={game.mediaUrls} />
           </div>
         )}
 
@@ -348,6 +357,13 @@ export default async function GameDetailPage({ params }: { params: Promise<{ slu
                 </a>
               )}
             </div>
+          </div>
+        )}
+
+        {/* Press & coverage */}
+        {game.pressLinks && game.pressLinks.length > 0 && (
+          <div className="mt-4">
+            <PressLinks links={game.pressLinks} />
           </div>
         )}
 
