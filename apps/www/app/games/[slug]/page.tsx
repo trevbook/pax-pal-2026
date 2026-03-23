@@ -9,7 +9,7 @@ import { TagChip } from "@/components/tag-chip";
 import { TypeBadge } from "@/components/type-badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { getAllActiveGames, getExhibitorById, getGameBySlug, getGamesByExhibitor } from "@/lib/db";
+import { getAllActiveGames, getGameBySlug, getGamesByExhibitor } from "@/lib/db";
 import { formatBoothDisplay } from "@/lib/format-booth";
 
 // SSG: generate all game slugs at build time
@@ -58,11 +58,8 @@ export default async function GameDetailPage({ params }: { params: Promise<{ slu
     "discoverySource" in game ? (game as { discoverySource: string | null }).discoverySource : null;
   const isLowConfidence = discoverySource && LOW_CONFIDENCE_SOURCES.has(discoverySource);
 
-  // Fetch sibling games + exhibitor in parallel
-  const [siblingGames, exhibitor] = await Promise.all([
-    getGamesByExhibitor(game.exhibitorId),
-    getExhibitorById(game.exhibitorId),
-  ]);
+  // Fetch sibling games from same exhibitor
+  const siblingGames = await getGamesByExhibitor(game.exhibitorId);
   const otherGames = siblingGames.filter((g) => g.id !== game.id);
 
   // Build the Find on Map href
@@ -77,12 +74,11 @@ export default async function GameDetailPage({ params }: { params: Promise<{ slu
 
   return (
     <div className="pb-28">
-      {/* Hero image */}
-      <div className="relative aspect-[16/9] w-full overflow-hidden bg-muted">
-        <GameImage src={game.imageUrl} alt={game.name} type={game.type} sizes="100vw" />
-      </div>
-
       <div className="mx-auto max-w-2xl px-4">
+        {/* Hero image */}
+        <div className="relative mt-4 aspect-[16/9] w-full overflow-hidden rounded-lg bg-muted">
+          <GameImage src={game.imageUrl} alt={game.name} type={game.type} sizes="672px" />
+        </div>
         {/* Title block */}
         <div className="mt-4 flex flex-col gap-2">
           <div className="flex items-start gap-2">
@@ -194,18 +190,6 @@ export default async function GameDetailPage({ params }: { params: Promise<{ slu
                   </span>
                 </div>
               )}
-
-              {game.steamUrl && (
-                <a
-                  href={game.steamUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
-                >
-                  View on Steam
-                  <ExternalLink className="size-3.5" />
-                </a>
-              )}
             </>
           )}
 
@@ -269,23 +253,105 @@ export default async function GameDetailPage({ params }: { params: Promise<{ slu
                   </div>
                 </div>
               )}
+            </>
+          )}
+        </div>
 
+        {/* External links */}
+        {(game.steamUrl ||
+          bggUrl ||
+          game.showroomUrl ||
+          game.socialLinks?.twitter ||
+          game.socialLinks?.discord ||
+          game.socialLinks?.youtube ||
+          game.socialLinks?.itchIo) && (
+          <div className="mt-4">
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Links
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {game.steamUrl && (
+                <a
+                  href={game.steamUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-accent"
+                >
+                  Steam
+                  <ExternalLink className="size-3" />
+                </a>
+              )}
               {bggUrl && (
                 <a
                   href={bggUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-accent"
                 >
-                  View on BoardGameGeek
-                  <ExternalLink className="size-3.5" />
+                  BoardGameGeek
+                  <ExternalLink className="size-3" />
                 </a>
               )}
-            </>
-          )}
-        </div>
+              {game.showroomUrl && (
+                <a
+                  href={game.showroomUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-accent"
+                >
+                  PAX Showroom
+                  <ExternalLink className="size-3" />
+                </a>
+              )}
+              {game.socialLinks?.twitter && (
+                <a
+                  href={game.socialLinks.twitter}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-accent"
+                >
+                  Twitter
+                  <ExternalLink className="size-3" />
+                </a>
+              )}
+              {game.socialLinks?.discord && (
+                <a
+                  href={game.socialLinks.discord}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-accent"
+                >
+                  Discord
+                  <ExternalLink className="size-3" />
+                </a>
+              )}
+              {game.socialLinks?.youtube && (
+                <a
+                  href={game.socialLinks.youtube}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-accent"
+                >
+                  YouTube
+                  <ExternalLink className="size-3" />
+                </a>
+              )}
+              {game.socialLinks?.itchIo && (
+                <a
+                  href={game.socialLinks.itchIo}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-accent"
+                >
+                  itch.io
+                  <ExternalLink className="size-3" />
+                </a>
+              )}
+            </div>
+          </div>
+        )}
 
-        {/* Full tag list */}
+        {/* Full tag list — hidden for now, revisit later
         {game.tags.length > 0 && (
           <>
             <Separator className="my-6" />
@@ -301,118 +367,23 @@ export default async function GameDetailPage({ params }: { params: Promise<{ slu
             </div>
           </>
         )}
-
-        {/* Exhibitor card */}
-        <Separator className="my-6" />
-        <div className="rounded-lg border border-border p-4">
-          <div className="flex items-center gap-3">
-            {exhibitor?.imageUrl ? (
-              <div className="relative size-12 shrink-0 overflow-hidden rounded-lg bg-muted">
-                <GameImage
-                  src={exhibitor.imageUrl}
-                  alt={exhibitor.name}
-                  type="video_game"
-                  sizes="48px"
-                />
-              </div>
-            ) : (
-              <div className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-muted text-lg font-bold text-muted-foreground">
-                {game.exhibitor.charAt(0)}
-              </div>
-            )}
-            <div className="min-w-0 flex-1">
-              <p className="font-semibold">{game.exhibitor}</p>
-              {booth && <p className="text-sm text-muted-foreground">{booth.label}</p>}
-              {otherGames.length > 0 && (
-                <Link
-                  href={`/games?exhibitor=${encodeURIComponent(game.exhibitorId)}`}
-                  className="text-sm text-primary hover:underline"
-                >
-                  {otherGames.length} other game{otherGames.length !== 1 ? "s" : ""} →
-                </Link>
-              )}
-            </div>
-          </div>
-        </div>
+        */}
 
         {/* Other games by this exhibitor — show up to 3 */}
         {otherGames.length > 0 && (
-          <div className="mt-4">
-            <h3 className="mb-3 text-sm font-semibold text-muted-foreground">
-              More from {game.exhibitor}
-            </h3>
-            <div className="flex flex-col gap-2">
-              {otherGames.slice(0, 3).map((g) => (
-                <GameCard key={g.id} game={g} compact />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* External links */}
-        {(game.showroomUrl || game.socialLinks?.twitter || game.socialLinks?.discord) && (
           <>
             <Separator className="my-6" />
             <div>
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Links
-              </h3>
-              <div className="flex flex-wrap gap-2">
-                {game.showroomUrl && (
-                  <a
-                    href={game.showroomUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-accent"
-                  >
-                    PAX Showroom
-                    <ExternalLink className="size-3" />
-                  </a>
-                )}
-                {game.socialLinks?.twitter && (
-                  <a
-                    href={game.socialLinks.twitter}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-accent"
-                  >
-                    Twitter
-                    <ExternalLink className="size-3" />
-                  </a>
-                )}
-                {game.socialLinks?.discord && (
-                  <a
-                    href={game.socialLinks.discord}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-accent"
-                  >
-                    Discord
-                    <ExternalLink className="size-3" />
-                  </a>
-                )}
-                {game.socialLinks?.youtube && (
-                  <a
-                    href={game.socialLinks.youtube}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-accent"
-                  >
-                    YouTube
-                    <ExternalLink className="size-3" />
-                  </a>
-                )}
-                {game.socialLinks?.itchIo && (
-                  <a
-                    href={game.socialLinks.itchIo}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-accent"
-                  >
-                    itch.io
-                    <ExternalLink className="size-3" />
-                  </a>
-                )}
+              <Link
+                href={`/games?exhibitor=${encodeURIComponent(game.exhibitorId)}`}
+                className="mb-3 inline-flex items-center gap-1 text-sm font-semibold text-muted-foreground hover:text-foreground hover:underline"
+              >
+                More from {game.exhibitor} →
+              </Link>
+              <div className="flex flex-col gap-2">
+                {otherGames.slice(0, 3).map((g) => (
+                  <GameCard key={g.id} game={g} compact />
+                ))}
               </div>
             </div>
           </>

@@ -78,7 +78,7 @@ export function ReportModal({ gameId, gameName, hasReported, onReported }: Repor
           type="button"
           className="text-sm text-muted-foreground underline-offset-4 hover:underline"
         >
-          Something wrong? Report an issue
+          Something wrong with the data? Report an issue
         </button>
       </DialogTrigger>
       <DialogContent className="max-w-md">

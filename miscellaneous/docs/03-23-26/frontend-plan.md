@@ -30,7 +30,7 @@ The goal is that any future Claude (or human) picking up this plan can read the 
 | 3. Game Catalogue | ✅ Complete | `/games` — browse + filter |
 | 4. Game Detail & Tracking | ✅ Complete | `/games/[slug]` + localStorage tracking system |
 | 5. My Games | ✅ Complete | `/my-games` — personal tracking hub |
-| 6. Search | 📋 Planned | `/search` — hybrid text + semantic |
+| 6. Search | ✅ Complete | `/search` — hybrid text + semantic |
 | 7. Expo Hall Map | 📋 Planned | `/map`, `/map/[boothId]` + booth data pipeline |
 | 8. Home & Polish | 📋 Planned | `/` dashboard + loading/error/offline states |
 
@@ -47,6 +47,10 @@ The goal is that any future Claude (or human) picking up this plan can read the 
 - AI Chat (Screen 11) — stretch goal, deferred
 - Comments / Ratings synced to cloud — requires social layer
 - Community stats on game pages — requires social layer
+
+**Nice-to-have (post-MVP polish):**
+- "Similar Games" section on game detail page — use embedding vectors (already in S3) to find semantically similar games. Could pre-compute top-N similar games per game and cache in DynamoDB or a static JSON file for fast access at render time. Show as compact game cards below the "More from [exhibitor]" section.
+- Clickable metadata chips — make platform chips (PC, PlayStation, etc.), genre tags, release status badges, and other metadata on the game detail page link to filtered views in the Games catalogue (e.g. clicking "PC" navigates to `/games?platform=PC`, clicking "Roguelike" to `/games?genre=Roguelike`). Applies to both video game and tabletop metadata.
 
 ---
 
@@ -406,7 +410,26 @@ apps/www/components/game-image.tsx     (image with fallback)
 
 ### Implementation notes
 
-*(To be filled in during implementation.)*
+**Completed 2026-03-23.**
+
+- **Architecture**: Server component (`app/search/page.tsx`) renders metadata and delegates to a `SearchPage` client component (`components/search-page.tsx`). Two parallel server actions handle text and semantic search, with results progressively merged on the client.
+- **SST Secrets**: Added `GeminiApiKey` and `VectorIndexArn` as `sst.Secret` resources in `infra/secrets.ts` (replacing the empty `secrets` object). Linked to the Nextjs component in `infra/frontend.ts`. Accessed at runtime via `Resource.GeminiApiKey.value` / `Resource.VectorIndexArn.value`.
+- **Vector utilities** (`lib/vectors.ts`): Server-only module with lazy singleton clients. `embedQuery(text)` calls Gemini `gemini-embedding-2-preview` to embed a single query string (3072d). `queryVectors(embedding, topK, typeFilter?)` queries S3 Vectors with optional metadata filtering on `type` (uses `$or` filter for tab-based type filtering — "Video Games" matches `video_game` OR `both`, "Tabletop" matches `tabletop` OR `both`).
+- **Text search** (`app/search/actions.ts` → `textSearch()`): Server action. Fetches all active games via `getAllActiveGames()`, filters by type tab, then scores substring matches: name prefix (1.0), name contains (0.8), exhibitor (0.6), tags/genres/mechanics (0.5), summary (0.4). Returns top 30 results with match type indicators.
+- **Semantic search** (`app/search/actions.ts` → `semanticSearch()`): Server action. Embeds query via Gemini, queries S3 Vectors for top 30, then looks up each game by ID via DynamoDB `GetCommand`. Converts cosine distance to similarity score (1 - distance/2). Graceful degradation: if Gemini or S3 Vectors fails, returns empty results with error message string.
+- **Progressive search**: Client fires both server actions in parallel. Text results (~50ms) render immediately. Semantic results (~500-1500ms) merge in when ready, with a "Finding similar games…" spinner shown while loading. Stale requests are discarded via a simple counter-based abort pattern.
+- **Hybrid scoring**: 70/30 semantic/text weighting. Games appearing in both result sets get boosted (scores added). Match type badge shows the dominant source.
+- **Search input**: Auto-focused on mount. Animated placeholder cycles through 4 example queries (3.5s interval). Clear button (X) when input has text. Debounced at 300ms per spec.
+- **Type tabs**: `[ All ] [ Video Games ] [ Tabletop ]` — appear after first search. Tab change re-triggers both searches immediately (no debounce). "All" is default.
+- **Match type indicators**: Color-coded badges on each result card — "Name match" (blue), "Description match" (green), "Semantic match" (purple). Positioned top-left overlaying the GameCard.
+- **Suggestion chips**: Pre-search state shows 6 tappable chips with example queries. Tapping fills input and triggers search immediately (no debounce).
+- **Empty/no results states**: Pre-search shows centered search icon + suggestion chips. No results shows friendly message + "Browse all games" CTA link to `/games`.
+- **Offline fallback**: Yellow banner "Semantic search unavailable — showing text matches only" displayed when semantic search fails.
+- **Dependencies added**: `@google/genai`, `@aws-sdk/client-s3vectors` to `apps/www/package.json`.
+- **Files created**: `lib/vectors.ts` (~95 lines), `app/search/actions.ts` (~130 lines), `components/search-page.tsx` (~290 lines).
+- **Files modified**: `app/search/page.tsx` (replaced stub), `infra/secrets.ts` (SST secrets), `infra/frontend.ts` (linked secrets).
+- **Key decisions**: Gemini embedding called via a shared utility (`lib/vectors.ts`) — keeps server action clean. S3 Vectors filter uses `$or` operator for type tab filtering. 300ms debounce felt right — kept as-is. Used `Record<string, unknown>` with `as never` cast for the S3 Vectors filter param (SDK's `__DocumentType` from `@smithy/types` isn't directly importable without adding smithy as a dependency).
+- **Deviations**: None significant from the plan. Tracking indicators on search result cards deferred (same as catalogue — cards render server data only).
 
 ---
 

@@ -4,7 +4,6 @@ import type { GameCardData } from "@/lib/game-card-data";
 import { cn } from "@/lib/utils";
 import { GameImage } from "./game-image";
 import { TagChip } from "./tag-chip";
-import { TypeBadge } from "./type-badge";
 
 // ---------------------------------------------------------------------------
 // Tag chip priority: genres → mechanics → business tags → audience tags
@@ -93,10 +92,6 @@ export function GameCard({
         {/* Thumbnail */}
         <div className="relative size-16 shrink-0 overflow-hidden rounded-md">
           <GameImage src={game.imageUrl} alt={game.name} type={game.type} className="rounded-md" />
-          <TypeBadge
-            type={game.type}
-            className="absolute top-0.5 right-0.5 scale-75 origin-top-right"
-          />
         </div>
 
         {/* Info */}
@@ -123,7 +118,7 @@ export function GameCard({
       {/* Image */}
       <div className="relative aspect-[16/9] w-full overflow-hidden bg-muted">
         <GameImage src={game.imageUrl} alt={game.name} type={game.type} />
-        <TypeBadge type={game.type} className="absolute top-2 right-2" />
+
         {isLowConfidence && (
           <span
             className="absolute bottom-2 left-2 rounded bg-yellow-100/90 px-1.5 py-0.5 text-[10px] font-medium text-yellow-800 dark:bg-yellow-900/70 dark:text-yellow-300"
