@@ -153,6 +153,35 @@ export function useTrackingStats() {
   return { watchlistCount, playedCount, totalTracked };
 }
 
+/** Access the full tracking data (watchlist + played maps). */
+export function useTrackingList() {
+  return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+}
+
+/** Remove a game from the watchlist by ID. */
+export function removeFromWatchlist(gameId: string) {
+  mutate((d) => {
+    delete d.watchlist[gameId];
+  });
+  tryHaptic();
+}
+
+/** Remove a game from the played list by ID. */
+export function removeFromPlayed(gameId: string) {
+  mutate((d) => {
+    delete d.played[gameId];
+  });
+  tryHaptic();
+}
+
+/** Set or clear a rating for a played game by ID. */
+export function setGameRating(gameId: string, rating: number | null) {
+  mutate((d) => {
+    const entry = d.played[gameId];
+    if (entry) entry.rating = rating;
+  });
+}
+
 /** Trigger haptic feedback if the browser supports it. */
 function tryHaptic() {
   if (typeof navigator !== "undefined" && "vibrate" in navigator) {

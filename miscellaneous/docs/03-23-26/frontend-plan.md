@@ -29,7 +29,7 @@ The goal is that any future Claude (or human) picking up this plan can read the 
 | 2. Data Layer & Shared Components | ✅ Complete | DynamoDB access, GameCardData, reusable components |
 | 3. Game Catalogue | ✅ Complete | `/games` — browse + filter |
 | 4. Game Detail & Tracking | ✅ Complete | `/games/[slug]` + localStorage tracking system |
-| 5. My Games | 📋 Planned | `/my-games` — personal tracking hub |
+| 5. My Games | ✅ Complete | `/my-games` — personal tracking hub |
 | 6. Search | 📋 Planned | `/search` — hybrid text + semantic |
 | 7. Expo Hall Map | 📋 Planned | `/map`, `/map/[boothId]` + booth data pipeline |
 | 8. Home & Polish | 📋 Planned | `/` dashboard + loading/error/offline states |
@@ -354,7 +354,21 @@ apps/www/components/game-image.tsx     (image with fallback)
 
 ### Implementation notes
 
-*(To be filled in during implementation.)*
+**Completed 2026-03-23.**
+
+- **Architecture**: Fully client-side — no server data fetching needed. The page component (`app/my-games/page.tsx`) is a server component that renders metadata and delegates to `MyGames` client component (`components/my-games.tsx`). All game data comes from localStorage's denormalized tracking entries (Option A from spec).
+- **Tracking hooks extended** (`hooks/use-tracking.ts`): Added `useTrackingList()` hook (returns full `LocalTrackingData`), plus standalone mutators: `removeFromWatchlist(gameId)`, `removeFromPlayed(gameId)`, `setGameRating(gameId, rating)`. All mutators trigger haptic feedback and notify subscribers via the existing `useSyncExternalStore` external store pattern.
+- **Progress section**: Rendered when any tracking data exists. Shows played/watchlisted ratio as a progress bar with percentage, plus stats row (watchlisted count, played count, rated count, average star rating). "Watchlist played" count is computed as games appearing in both maps.
+- **Tabs**: Custom pill-style tab buttons (Watchlist / Played) with count badges and Heart/Check icons. Default tab is Watchlist.
+- **Sort controls**: shadcn `Select` dropdown with three options — Name (A–Z, default), Booth Number (reuses `compareBoothId` from `lib/sort-booth.ts`), Recently Added (descending by `addedAt`/`playedAt` timestamp). Results count displayed alongside.
+- **Game list**: Custom `GameRow` component (not reusing `GameCard` directly — needed inline star ratings and remove button which required different composition). Each row: 64px thumbnail with `GameImage` + `TypeBadge`, title + exhibitor + booth line, star rating controls (on Played tab only, tappable to change), X remove button. Ratings use the same 1–5 star pattern as `ActionBar` but smaller (3.5 size icons).
+- **Remove**: X button per row. Calls `removeFromWatchlist` / `removeFromPlayed` standalone mutators. No swipe-to-remove (would require a gesture library — X button is simpler and adequate).
+- **Empty states**: Two levels — full empty state (no tracking data at all) shows heart icon + friendly message + "Browse Games →" CTA. Tab-level empty state shows when a specific tab has no entries.
+- **Export / Share**: "Share Your PAX Recap" button at bottom. Generates text summary: title line, played/rated counts, top 3 rated games with star display, watchlisted-but-missed games (up to 4 + overflow count). Uses `navigator.share()` with clipboard fallback + "Copied to clipboard!" confirmation state.
+- **Metadata**: Page has `title: "My Games — PAX Pal 2026"` and description via Next.js `Metadata` export.
+- **Files created**: `components/my-games.tsx` (~510 lines).
+- **Files modified**: `hooks/use-tracking.ts` (added 3 standalone mutators + `useTrackingList` hook), `app/my-games/page.tsx` (replaced stub).
+- **Deviations**: Used custom `GameRow` instead of the existing compact `GameCard` — the spec requires inline star ratings and remove controls which don't fit the `GameCard` component's link-based design. Swipe-to-remove not implemented (X button used instead — avoids a gesture library dependency for minimal UX benefit).
 
 ---
 

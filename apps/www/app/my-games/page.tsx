@@ -1,8 +1,11 @@
+import type { Metadata } from "next";
+import { MyGames } from "@/components/my-games";
+
+export const metadata: Metadata = {
+  title: "My Games — PAX Pal 2026",
+  description: "Your personal game tracking hub — watchlist, played games, and ratings.",
+};
+
 export default function MyGamesPage() {
-  return (
-    <div className="p-4">
-      <h1 className="text-2xl font-bold">My Games</h1>
-      <p className="mt-2 text-muted-foreground">Your tracked games will appear here.</p>
-    </div>
-  );
+  return <MyGames />;
 }
