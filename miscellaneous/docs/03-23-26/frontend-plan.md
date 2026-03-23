@@ -27,7 +27,7 @@ The goal is that any future Claude (or human) picking up this plan can read the 
 |-------|--------|-------|
 | 1. App Scaffold & Layout | ✅ Complete | Routing, nav, theme, metadata |
 | 2. Data Layer & Shared Components | ✅ Complete | DynamoDB access, GameCardData, reusable components |
-| 3. Game Catalogue | 📋 Planned | `/games` — browse + filter |
+| 3. Game Catalogue | ✅ Complete | `/games` — browse + filter |
 | 4. Game Detail & Tracking | 📋 Planned | `/games/[slug]` + localStorage tracking system |
 | 5. My Games | 📋 Planned | `/my-games` — personal tracking hub |
 | 6. Search | 📋 Planned | `/search` — hybrid text + semantic |
@@ -235,7 +235,23 @@ apps/www/components/game-image.tsx     (image with fallback)
 
 ### Implementation notes
 
-*(To be filled in during implementation.)*
+**Completed 2026-03-23.**
+
+- **Architecture**: Server component (`app/games/page.tsx`) fetches all active games via `getAllActiveGames()` and passes the `GameCardData[]` to a client component (`components/game-catalogue.tsx`) for interactive filtering. Option A from the spec — single scan, client-side tab switching (instant, no refetch).
+- **ISR**: `revalidate = 3600` (1-hour ISR per spec).
+- **Type tabs**: Custom sticky tab bar below the header (not shadcn Tabs — needed tighter control over sticky positioning + `top-12` to sit below the `TopHeader`). Video Games tab is default. `type: "both"` games appear in both tabs. Tab switch resets chip filters and pagination but preserves search text (per spec).
+- **Filter bar**: Desktop (≥640px) shows inline search input + sort dropdown + genre/mechanic chips. Mobile (<640px) shows search input + "Filters" button that opens a `vaul` Drawer (bottom sheet) with sort + chips. Active filter count badge on the Filters button.
+- **Genre/mechanic chips**: Derived client-side from the current tab's dataset (distinct values from `genres` for video games, `mechanics` for tabletop). Multi-select — games must match at least one selected chip (OR logic). Chips sorted alphabetically.
+- **Sort**: "Name (A–Z)" (default) and "Booth Number" via shadcn Select. Booth sort uses `lib/sort-booth.ts` — a comparator implementing the spec's parsing rules (numeric → NL → TT/Tabletop Hall → null/UNSPECIFIED).
+- **Pagination**: Client-side "Load more" button, 20 games per page. Shows "(N remaining)" count. Resets to 20 on filter/tab changes.
+- **Results count**: "Showing N video games" / "Showing N tabletop games" — reflects active filters.
+- **Empty state**: "No games found" message with "Try adjusting your filters" hint and clear-filters button.
+- **Card grid**: 1-col mobile, 2-col tablet (`sm:`), 3-col desktop (`lg:`). Uses existing `GameCard` component (standard variant).
+- **Tracking indicators on cards**: Deferred to Stage 4 (localStorage tracking system not yet built). Cards render server data only.
+- **Files created**: `components/game-catalogue.tsx` (client component, ~360 lines), `lib/sort-booth.ts` (booth sort comparator, ~60 lines).
+- **Files modified**: `app/games/page.tsx` (replaced stub with server component + ISR).
+- **Key decisions**: Tag chip values derived client-side (simpler than build-time extraction, all data already loaded). Used custom tab buttons instead of shadcn Tabs for better sticky positioning control.
+- **Deviations**: None from the plan. The spec's mention of intersection observer for pagination was simplified to a "Load more" button — simpler and adequate for ~280–130 items per tab.
 
 ---
 
