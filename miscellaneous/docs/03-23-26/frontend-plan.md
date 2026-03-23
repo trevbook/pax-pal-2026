@@ -26,7 +26,7 @@ The goal is that any future Claude (or human) picking up this plan can read the 
 | Stage | Status | Notes |
 |-------|--------|-------|
 | 1. App Scaffold & Layout | ✅ Complete | Routing, nav, theme, metadata |
-| 2. Data Layer & Shared Components | 📋 Planned | DynamoDB access, GameCardData, reusable components |
+| 2. Data Layer & Shared Components | ✅ Complete | DynamoDB access, GameCardData, reusable components |
 | 3. Game Catalogue | 📋 Planned | `/games` — browse + filter |
 | 4. Game Detail & Tracking | 📋 Planned | `/games/[slug]` + localStorage tracking system |
 | 5. My Games | 📋 Planned | `/my-games` — personal tracking hub |
@@ -184,7 +184,20 @@ apps/www/components/game-image.tsx     (image with fallback)
 
 ### Implementation notes
 
-*(To be filled in during implementation.)*
+**Completed 2026-03-23.**
+
+- **Dependencies added**: `@pax-pal/core` (workspace), `@aws-sdk/client-dynamodb`, `@aws-sdk/lib-dynamodb`, `sst`, `server-only` added to `apps/www/package.json`.
+- **Data layer** (`lib/db.ts`): Server-only module using SST `Resource` linking to resolve table names at runtime. DynamoDB DocumentClient singleton. Five query functions: `getAllActiveGames()` (scan + filter active → GameCardData[]), `getGameBySlug(slug)` (scan + filter — no slug GSI, acceptable at ~395 items), `getGamesByExhibitor(exhibitorId)` (scan + filter), `getGamesByBooth(boothId)` (QueryCommand on `byBooth` GSI), `getExhibitorById(id)` (GetCommand by PK `EXHIBITOR#{id}`). All game queries filter `status === "active"`.
+- **Data fetching pattern**: Direct DynamoDB calls in server components for read paths (as recommended by the plan). Server actions for writes will be added in Stage 4 (reports).
+- **`GameCardData`** (`lib/game-card-data.ts`): Interface + `toGameCardData()` projection function. The `discoverySource` field is accessed dynamically via `"discoverySource" in game` since it exists on `HarmonizedGame` but hasn't been added to the `Game` interface yet — DynamoDB items may carry it through from the pipeline. This should be formalized when `discoverySource` is added to `Game`.
+- **`formatBoothDisplay`** (`lib/format-booth.ts`): Covers all `boothId` formats from the UI spec: numeric → "Booth 15043", TT-prefix → "Table TT29A", comma-separated → "Booths 18019, 18031, NL2", "Tabletop Hall" → literal, UNSPECIFIED/null → returns `null` (hidden). Each format returns the appropriate `/map` href.
+- **`TypeBadge`** (`components/type-badge.tsx`): Server component. Blue for video game, green for tabletop, gradient for "both". Uses semantic colors with dark mode variants.
+- **`TagChip`** (`components/tag-chip.tsx`): Server component. Muted border + background, rounded pill style.
+- **`GameImage`** (`components/game-image.tsx`): Client component. Uses `next/image` with `fill` + `object-cover`. Fallback chain: imageUrl → placeholder with type-based icon (Gamepad2 for video games, Dice5 for tabletop). Exhibitor logo fallback deferred — requires exhibitor data on the card, which would widen the GameCardData type; can add in Stage 4 when detail pages have exhibitor context.
+- **`GameCard`** (`components/game-card.tsx`): Server component with two variants via `compact` prop. Standard variant: 16:9 image, type badge overlay, "Unverified" indicator for low-confidence discovery sources, title + exhibitor + booth, 2-line summary clamp, up to 3 tag chips (priority: genres → mechanics → business tags → audience tags, style tags skipped per spec). Compact variant: 64px thumbnail + single-line title/subtitle, used for lists (My Games, booth sheets). Entire card is a link to `/games/[slug]`. Low-confidence games get dashed borders.
+- **BottomSheet**: Confirmed shadcn's `Drawer` component (backed by `vaul`) is already installed at `components/ui/drawer.tsx`. No custom wrapper needed — stages that need bottom sheets (Stage 3 filter bar, Stage 7 map booth tap) will use the Drawer directly.
+- **Tracking indicators on GameCard**: Deferred to Stage 4 when the localStorage tracking system is built. The GameCard accepts `GameCardData` (server data only) — tracking indicators will be added via a client wrapper or composition pattern.
+- **Deviations**: Exhibitor logo in the image fallback chain deferred (see GameImage note above). No new shadcn components needed beyond what's already installed.
 
 ---
 
