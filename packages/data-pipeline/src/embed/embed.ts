@@ -213,6 +213,8 @@ export function assembleGame(
     complexity,
     mechanics: classification?.mechanics ?? null,
     embedding,
+    discoverySource: game.discoverySource,
+    discoveryMeta: game.discoveryMeta ?? null,
     sourcePages: game.sourcePages,
     lastScrapedAt: game.lastScrapedAt,
     enrichedAt: meta?.enrichedAt ?? null,

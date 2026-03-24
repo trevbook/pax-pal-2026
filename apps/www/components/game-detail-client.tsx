@@ -1,6 +1,8 @@
 "use client";
 
 import type { GameType } from "@pax-pal/core";
+import { AlertTriangle } from "lucide-react";
+import { useState } from "react";
 import { useTracking } from "@/hooks/use-tracking";
 import { ActionBar } from "./action-bar";
 import { ReportModal } from "./report-modal";
@@ -15,14 +17,37 @@ interface GameDetailClientProps {
     type: GameType;
     exhibitor: string;
   };
+  confirmed: boolean;
 }
 
 /** Client wrapper that provides tracking state + action bar + report modal. */
-export function GameDetailClient({ game }: GameDetailClientProps) {
+export function GameDetailClient({ game, confirmed }: GameDetailClientProps) {
   const tracking = useTracking(game);
+  const [reportOpen, setReportOpen] = useState(false);
 
   return (
     <>
+      {/* Unconfirmed alert banner */}
+      {!confirmed && (
+        <div className="mt-6 rounded-lg border border-yellow-300 bg-yellow-50 px-4 py-3 dark:border-yellow-700 dark:bg-yellow-950/40">
+          <div className="flex gap-3">
+            <AlertTriangle className="mt-0.5 size-5 shrink-0 text-yellow-600 dark:text-yellow-400" />
+            <p className="text-sm text-yellow-800 dark:text-yellow-200">
+              This game hasn't been confirmed for PAX East 2026. We identified it through web
+              searches based on {game.exhibitor}'s booth listing, but they haven't listed a playable
+              demo on the PAX website.{" "}
+              <button
+                type="button"
+                onClick={() => setReportOpen(true)}
+                className="font-medium underline underline-offset-2 hover:text-yellow-900 dark:hover:text-yellow-100"
+              >
+                Report incorrect data
+              </button>
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Sticky action bar above bottom nav */}
       <ActionBar
         isWatchlisted={tracking.isWatchlisted}
@@ -40,6 +65,8 @@ export function GameDetailClient({ game }: GameDetailClientProps) {
           gameName={game.name}
           hasReported={tracking.hasReported}
           onReported={tracking.markReported}
+          open={reportOpen}
+          onOpenChange={setReportOpen}
         />
       </div>
     </>

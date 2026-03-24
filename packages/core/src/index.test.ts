@@ -186,6 +186,8 @@ describe("type compatibility", () => {
       complexity: 3.2,
       mechanics: ["Co-op Play"],
       embedding: null,
+      discoverySource: null,
+      discoveryMeta: null,
       sourcePages: ["exhibitors", "tabletop", "demos"],
       lastScrapedAt: new Date().toISOString(),
       enrichedAt: new Date().toISOString(),

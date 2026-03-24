@@ -57,12 +57,6 @@ function getTopChips(game: GameCardData, max = 3): string[] {
 }
 
 // ---------------------------------------------------------------------------
-// Discovery confidence
-// ---------------------------------------------------------------------------
-
-const LOW_CONFIDENCE_SOURCES = new Set(["web_search", "name_is_game"]);
-
-// ---------------------------------------------------------------------------
 // GameCard — standard variant
 // ---------------------------------------------------------------------------
 
@@ -77,7 +71,7 @@ export function GameCard({
 }) {
   const booth = formatBoothDisplay(game.boothId);
   const chips = getTopChips(game);
-  const isLowConfidence = game.discoverySource && LOW_CONFIDENCE_SOURCES.has(game.discoverySource);
+  const isUnconfirmed = !game.confirmed;
 
   if (compact) {
     return (
@@ -85,7 +79,7 @@ export function GameCard({
         href={`/games/${game.slug}`}
         className={cn(
           "group flex gap-3 rounded-lg border border-border bg-card p-3 transition-colors hover:bg-accent/50",
-          isLowConfidence && "border-dashed border-muted-foreground/30",
+          isUnconfirmed && "border-dashed border-muted-foreground/30",
           className,
         )}
       >
@@ -111,7 +105,7 @@ export function GameCard({
       href={`/games/${game.slug}`}
       className={cn(
         "group flex flex-col overflow-hidden rounded-lg border border-border bg-card transition-colors hover:bg-accent/50",
-        isLowConfidence && "border-dashed border-muted-foreground/30",
+        isUnconfirmed && "border-dashed border-muted-foreground/30",
         className,
       )}
     >
@@ -119,12 +113,12 @@ export function GameCard({
       <div className="relative aspect-[16/9] w-full overflow-hidden bg-muted">
         <GameImage src={game.imageUrl} alt={game.name} type={game.type} />
 
-        {isLowConfidence && (
+        {isUnconfirmed && (
           <span
             className="absolute bottom-2 left-2 rounded bg-yellow-100/90 px-1.5 py-0.5 text-[10px] font-medium text-yellow-800 dark:bg-yellow-900/70 dark:text-yellow-300"
-            title="This game was identified from web sources and may not be accurate."
+            title="This game hasn't been confirmed for PAX East 2026."
           >
-            Unverified
+            Unconfirmed
           </span>
         )}
       </div>

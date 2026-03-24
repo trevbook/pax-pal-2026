@@ -3,6 +3,7 @@ import type {
   Game,
   GameDynamoItem,
   GameType,
+  InclusionTier,
   Platform,
   TabletopGenre,
   TabletopMechanic,
@@ -32,6 +33,8 @@ export interface GameCardData {
   platforms: Platform[] | null;
   releaseStatus: string | null;
   discoverySource: DiscoverySource | null;
+  /** True when the game is confirmed to appear at PAX (demo page or inclusionTier=confirmed). */
+  confirmed: boolean;
 }
 
 /** Project a full Game (or GameDynamoItem) down to GameCardData. */
@@ -53,11 +56,20 @@ export function toGameCardData(game: Game | GameDynamoItem): GameCardData {
     mechanics: game.mechanics,
     platforms: game.platforms,
     releaseStatus: game.releaseStatus,
-    // discoverySource exists on HarmonizedGame but not yet on Game/GameDynamoItem.
-    // Access it dynamically since DynamoDB items may carry it through.
-    discoverySource:
-      ("discoverySource" in game
-        ? (game as { discoverySource: DiscoverySource | null }).discoverySource
-        : null) ?? null,
+    discoverySource: game.discoverySource,
+    confirmed: isConfirmed(game.discoverySource, game.discoveryMeta?.inclusionTier),
   };
+}
+
+/**
+ * A game is confirmed if it came from the PAX demo page or has explicit PAX confirmation.
+ * Demo-sourced games have `discoverySource: null` (set in harmonize stage).
+ * Discovered games are only confirmed when `inclusionTier === "confirmed"`.
+ */
+export function isConfirmed(
+  discoverySource: DiscoverySource | null | undefined,
+  inclusionTier: InclusionTier | null | undefined,
+): boolean {
+  if (discoverySource == null) return true;
+  return inclusionTier === "confirmed";
 }

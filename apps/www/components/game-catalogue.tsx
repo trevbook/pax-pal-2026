@@ -17,7 +17,9 @@ import {
   DrawerTrigger,
 } from "./ui/drawer";
 import { Input } from "./ui/input";
+import { Label } from "./ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { Switch } from "./ui/switch";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -137,6 +139,7 @@ export function GameCatalogue({ games }: { games: GameCardData[] }) {
   const [selectedChips, setSelectedChips] = useState<Set<string>>(new Set());
   const [sort, setSort] = useState<SortOption>("name");
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [hideUnconfirmed, setHideUnconfirmed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   // Tab switch: reset chip filters and pagination, preserve search text (per spec)
@@ -175,6 +178,9 @@ export function GameCatalogue({ games }: { games: GameCardData[] }) {
 
   const filteredGames = useMemo(() => {
     let result = tabGames;
+    if (hideUnconfirmed) {
+      result = result.filter((g) => g.confirmed);
+    }
     if (searchText.trim()) {
       result = result.filter((g) => matchesTextFilter(g, searchText.trim()));
     }
@@ -182,7 +188,7 @@ export function GameCatalogue({ games }: { games: GameCardData[] }) {
       result = result.filter((g) => matchesChipFilter(g, selectedChips, tab));
     }
     return sortGames(result, sort);
-  }, [tabGames, searchText, selectedChips, sort, tab]);
+  }, [tabGames, hideUnconfirmed, searchText, selectedChips, sort, tab]);
 
   const visibleGames = filteredGames.slice(0, visibleCount);
   const hasMore = visibleCount < filteredGames.length;
@@ -235,6 +241,16 @@ export function GameCatalogue({ games }: { games: GameCardData[] }) {
               className="max-w-xs"
             />
             <SortSelect value={sort} onChange={setSort} />
+            <div className="flex items-center gap-2">
+              <Switch
+                id="hide-unconfirmed-desktop"
+                checked={hideUnconfirmed}
+                onCheckedChange={setHideUnconfirmed}
+              />
+              <Label htmlFor="hide-unconfirmed-desktop" className="text-sm">
+                Hide unconfirmed
+              </Label>
+            </div>
             {activeFilterCount > 0 && (
               <Button variant="ghost" size="sm" onClick={clearFilters}>
                 Clear filters
@@ -276,6 +292,16 @@ export function GameCatalogue({ games }: { games: GameCardData[] }) {
                 <div>
                   <p className="mb-2 text-sm font-medium">Sort by</p>
                   <SortSelect value={sort} onChange={setSort} />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id="hide-unconfirmed-mobile"
+                    checked={hideUnconfirmed}
+                    onCheckedChange={setHideUnconfirmed}
+                  />
+                  <Label htmlFor="hide-unconfirmed-mobile" className="text-sm font-medium">
+                    Hide unconfirmed
+                  </Label>
                 </div>
                 <div>
                   <p className="mb-2 text-sm font-medium">

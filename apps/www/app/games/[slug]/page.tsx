@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { getAllActiveGames, getGameBySlug, getGamesByExhibitor } from "@/lib/db";
 import { formatBoothDisplay } from "@/lib/format-booth";
+import { isConfirmed } from "@/lib/game-card-data";
 
 // SSG: generate all game slugs at build time
 export async function generateStaticParams() {
@@ -47,18 +48,13 @@ const PLATFORM_ICONS: Record<
   VR: { icon: Globe, label: "VR" },
 };
 
-// Discovery confidence
-const LOW_CONFIDENCE_SOURCES = new Set(["web_search", "name_is_game"]);
-
 export default async function GameDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const game = await getGameBySlug(slug);
   if (!game) notFound();
 
   const booth = formatBoothDisplay(game.boothId);
-  const discoverySource =
-    "discoverySource" in game ? (game as { discoverySource: string | null }).discoverySource : null;
-  const isLowConfidence = discoverySource && LOW_CONFIDENCE_SOURCES.has(discoverySource);
+  const confirmed = isConfirmed(game.discoverySource, game.discoveryMeta?.inclusionTier);
 
   // Fetch sibling games from same exhibitor
   const siblingGames = await getGamesByExhibitor(game.exhibitorId);
@@ -112,12 +108,6 @@ export default async function GameDetailPage({ params }: { params: Promise<{ slu
               </>
             )}
           </div>
-
-          {isLowConfidence && (
-            <span className="inline-flex w-fit items-center rounded-full bg-yellow-100 px-2.5 py-0.5 text-xs font-medium text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300">
-              Unverified — identified from web sources
-            </span>
-          )}
         </div>
 
         {/* Find on Map button */}
@@ -416,6 +406,7 @@ export default async function GameDetailPage({ params }: { params: Promise<{ slu
             type: game.type,
             exhibitor: game.exhibitor,
           }}
+          confirmed={confirmed}
         />
       </div>
     </div>

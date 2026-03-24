@@ -30,10 +30,23 @@ interface ReportModalProps {
   gameName: string;
   hasReported: boolean;
   onReported: () => void;
+  /** When provided, the parent controls open/close state. */
+  open?: boolean;
+  /** When provided, the parent controls open/close state. */
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function ReportModal({ gameId, gameName, hasReported, onReported }: ReportModalProps) {
-  const [open, setOpen] = useState(false);
+export function ReportModal({
+  gameId,
+  gameName,
+  hasReported,
+  onReported,
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
+}: ReportModalProps) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = controlledOnOpenChange ?? setInternalOpen;
   const [reportType, setReportType] = useState<ReportType | null>(null);
   const [description, setDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -60,7 +73,7 @@ export function ReportModal({ gameId, gameName, hasReported, onReported }: Repor
     } finally {
       setSubmitting(false);
     }
-  }, [reportType, description, gameId, gameName, onReported]);
+  }, [reportType, description, gameId, gameName, onReported, setOpen]);
 
   if (hasReported) {
     return (

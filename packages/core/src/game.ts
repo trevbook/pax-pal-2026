@@ -227,6 +227,12 @@ export interface Game {
   // Search
   embedding: number[] | null;
 
+  // Discovery
+  /** How this game was discovered. Null for demo-sourced games. */
+  discoverySource: DiscoverySource | null;
+  /** Evidence metadata from Tier 3 web search discovery. Null for non-Tier-3 games. */
+  discoveryMeta: DiscoveryMeta | null;
+
   // Metadata
   sourcePages: ("exhibitors" | "tabletop" | "demos")[];
   lastScrapedAt: string;
