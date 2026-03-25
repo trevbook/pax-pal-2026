@@ -9,6 +9,8 @@ import { enrich } from "./enrich/enrich";
 import type { EnrichmentMeta } from "./enrich/types";
 import { harmonize } from "./harmonize/harmonize";
 import { load, setupVectors } from "./load/load";
+import { map } from "./map/map";
+import type { BoothMap } from "./map/types";
 import { reconcileWithCaches } from "./reconcile/reconcile";
 import { transformDemos, transformExhibitors } from "./scrape/api";
 import { parseDemoPage } from "./scrape/demos";
@@ -391,6 +393,51 @@ async function runLoad(dryRun: boolean) {
   console.log("[load] Done.");
 }
 
+const IMAGES_DIR = join(import.meta.dirname, "../../../miscellaneous/images");
+const MAP_OUT_DIR = join(DATA_DIR, "06-map");
+
+async function runMap() {
+  console.log("\n[map] Running booth data pipeline...");
+
+  const imagePath = join(IMAGES_DIR, "expo-hall-map.jpg");
+  const imageFile = Bun.file(imagePath);
+  if (!(await imageFile.exists())) {
+    console.error(`  Map image not found: ${imagePath}`);
+    process.exit(1);
+  }
+
+  // Load game data to extract booth IDs for validation
+  const gamesPath = join(DATA_DIR, "05-embedded/games.json");
+  const gamesFile = Bun.file(gamesPath);
+  let gameBoothIds: string[] = [];
+  if (await gamesFile.exists()) {
+    const games = (await gamesFile.json()) as Array<{ boothId?: string | null }>;
+    gameBoothIds = games.map((g) => g.boothId).filter((id): id is string => id != null);
+    console.log(`  Loaded ${gameBoothIds.length} booth IDs from game data for validation.`);
+  } else {
+    console.warn(`  Game data not found at ${gamesPath} — skipping validation.`);
+  }
+
+  // Load manual overrides if they exist
+  let overrides: BoothMap = {};
+  const overridesPath = join(MAP_OUT_DIR, "booths-overrides.json");
+  const overridesFile = Bun.file(overridesPath);
+  if (await overridesFile.exists()) {
+    overrides = (await overridesFile.json()) as BoothMap;
+    console.log(`  Loaded ${Object.keys(overrides).length} manual overrides.`);
+  }
+
+  const cacheDir = join(DATA_DIR, "cache/map");
+  const result = await map({ imagePath, gameBoothIds, overrides, cacheDir });
+
+  await ensureDir(MAP_OUT_DIR);
+  await writeJson(join(MAP_OUT_DIR, "booths.json"), result.booths);
+  await writeJson(join(MAP_OUT_DIR, "map-stats.json"), result.stats);
+
+  console.log(`  Final: ${result.stats.finalBooths} booths`);
+  console.log("[map] Done.");
+}
+
 // ---------------------------------------------------------------------------
 // CLI entry point
 // ---------------------------------------------------------------------------
@@ -404,6 +451,7 @@ const STAGES = [
   "embed",
   "setup-vectors",
   "load",
+  "map",
   "all",
 ] as const;
 type Stage = (typeof STAGES)[number];
@@ -464,6 +512,10 @@ async function main() {
 
   if (stage === "load" || stage === "all") {
     await runLoad(dryRun);
+  }
+
+  if (stage === "map") {
+    await runMap();
   }
 
   console.log("\nPipeline complete.");
