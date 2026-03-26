@@ -1,6 +1,7 @@
 import { Gamepad2, MapIcon, Search, Star } from "lucide-react";
 import Link from "next/link";
 import { HomeProgress } from "@/components/home-progress";
+import { RecommendedGames } from "@/components/recommended-games";
 import { getAllActiveGames } from "@/lib/db";
 
 const quickActions = [
@@ -54,6 +55,9 @@ export default async function HomePage() {
       <section className="mt-6">
         <HomeProgress />
       </section>
+
+      {/* Recommended for you */}
+      <RecommendedGames />
 
       {/* Quick stats */}
       <section className="mt-6 rounded-xl border border-border bg-card p-5">

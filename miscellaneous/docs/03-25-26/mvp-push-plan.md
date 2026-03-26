@@ -27,7 +27,7 @@ The goal is that any future Claude (or human) picking up this plan can read the 
 | 1 | Favicon (🎮 emoji SVG) | 5 min | ✅ Complete |
 | 2 | Home page v1 | 40 min | ✅ Complete |
 | 3 | Info blurb + `/about` page | 20 min | ✅ Complete |
-| 4 | Personalized recommendations | 1 hr | 📋 Planned |
+| 4 | Personalized recommendations | 1 hr | ✅ Complete |
 
 ---
 

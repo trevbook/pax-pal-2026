@@ -1,6 +1,6 @@
 import "server-only";
 
-import { QueryVectorsCommand, S3VectorsClient } from "@aws-sdk/client-s3vectors";
+import { GetVectorsCommand, QueryVectorsCommand, S3VectorsClient } from "@aws-sdk/client-s3vectors";
 import { GoogleGenAI } from "@google/genai";
 import { Resource } from "sst";
 
@@ -53,6 +53,33 @@ export interface VectorResult {
   key: string; // game ID
   distance: number;
 }
+
+export async function getVectors(keys: string[]): Promise<Map<string, number[]>> {
+  if (keys.length === 0) return new Map();
+
+  const client = getS3VectorsClient();
+  const indexArn = getIndexArn();
+
+  const result = await client.send(
+    new GetVectorsCommand({
+      indexArn,
+      keys,
+      returnData: true,
+    }),
+  );
+
+  const map = new Map<string, number[]>();
+  for (const v of result.vectors ?? []) {
+    if (v.key && v.data?.float32) {
+      map.set(v.key, v.data.float32);
+    }
+  }
+  return map;
+}
+
+// ---------------------------------------------------------------------------
+// Query S3 Vectors
+// ---------------------------------------------------------------------------
 
 export async function queryVectors(
   embedding: number[],
