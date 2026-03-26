@@ -1,7 +1,9 @@
 "use client";
 
-import { SlidersHorizontal, X } from "lucide-react";
-import React, { useCallback, useMemo, useState } from "react";
+import { Info, SlidersHorizontal, X } from "lucide-react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getRecommendedOrder } from "@/app/recommendations/actions";
+import { useTrackingList } from "@/hooks/use-tracking";
 import type { GameCardData } from "@/lib/game-card-data";
 import { compareBoothId } from "@/lib/sort-booth";
 import { cn } from "@/lib/utils";
@@ -26,7 +28,7 @@ import { Switch } from "./ui/switch";
 // ---------------------------------------------------------------------------
 
 type GameTab = "video_game" | "tabletop";
-type SortOption = "name" | "booth";
+type SortOption = "name" | "booth" | "recommended";
 
 const PAGE_SIZE = 20;
 
@@ -63,9 +65,20 @@ function matchesChipFilter(game: GameCardData, chips: Set<string>, tab: GameTab)
   return values.some((v) => chips.has(v));
 }
 
-function sortGames(games: GameCardData[], sort: SortOption): GameCardData[] {
+function sortGames(
+  games: GameCardData[],
+  sort: SortOption,
+  recommendedRank?: Map<string, number>,
+): GameCardData[] {
   const copy = [...games];
-  if (sort === "booth") {
+  if (sort === "recommended" && recommendedRank && recommendedRank.size > 0) {
+    const unranked = recommendedRank.size;
+    copy.sort(
+      (a, b) =>
+        (recommendedRank.get(a.id) ?? unranked) - (recommendedRank.get(b.id) ?? unranked) ||
+        a.name.localeCompare(b.name),
+    );
+  } else if (sort === "booth") {
     copy.sort((a, b) => compareBoothId(a.boothId, b.boothId));
   } else {
     copy.sort((a, b) => a.name.localeCompare(b.name));
@@ -115,15 +128,26 @@ function FilterChips({
 // SortSelect
 // ---------------------------------------------------------------------------
 
-function SortSelect({ value, onChange }: { value: SortOption; onChange: (v: SortOption) => void }) {
+function SortSelect({
+  value,
+  onChange,
+  hasTracked,
+}: {
+  value: SortOption;
+  onChange: (v: SortOption) => void;
+  hasTracked: boolean;
+}) {
   return (
     <Select value={value} onValueChange={(v) => onChange(v as SortOption)}>
-      <SelectTrigger className="w-[160px]">
+      <SelectTrigger className="w-[180px]">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
         <SelectItem value="name">Name (A–Z)</SelectItem>
         <SelectItem value="booth">Booth Number</SelectItem>
+        <SelectItem value="recommended" disabled={!hasTracked}>
+          Recommended
+        </SelectItem>
       </SelectContent>
     </Select>
   );
@@ -141,6 +165,44 @@ export function GameCatalogue({ games }: { games: GameCardData[] }) {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [hideUnconfirmed, setHideUnconfirmed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+
+  // Recommended sort state
+  const tracking = useTrackingList();
+  const trackedIds = useMemo(() => {
+    const ids = new Set([...Object.keys(tracking.watchlist), ...Object.keys(tracking.played)]);
+    return [...ids].sort();
+  }, [tracking.watchlist, tracking.played]);
+  const hasTracked = trackedIds.length > 0;
+
+  const [recommendedRank, setRecommendedRank] = useState<Map<string, number>>(new Map());
+  const [recommendedLoading, setRecommendedLoading] = useState(false);
+  const fetchedForRef = useRef<string>("");
+
+  // Fetch recommended order when sort changes to "recommended"
+  useEffect(() => {
+    if (sort !== "recommended" || !hasTracked) return;
+
+    const idsKey = trackedIds.join(",");
+    if (fetchedForRef.current === idsKey && recommendedRank.size > 0) return;
+
+    let cancelled = false;
+    setRecommendedLoading(true);
+
+    getRecommendedOrder(trackedIds).then((orderedIds) => {
+      if (cancelled) return;
+      const rank = new Map<string, number>();
+      for (let i = 0; i < orderedIds.length; i++) {
+        rank.set(orderedIds[i], i);
+      }
+      setRecommendedRank(rank);
+      setRecommendedLoading(false);
+      fetchedForRef.current = idsKey;
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sort, trackedIds, hasTracked, recommendedRank.size]);
 
   // Tab switch: reset chip filters and pagination, preserve search text (per spec)
   const handleTabChange = useCallback(
@@ -187,8 +249,8 @@ export function GameCatalogue({ games }: { games: GameCardData[] }) {
     if (selectedChips.size > 0) {
       result = result.filter((g) => matchesChipFilter(g, selectedChips, tab));
     }
-    return sortGames(result, sort);
-  }, [tabGames, hideUnconfirmed, searchText, selectedChips, sort, tab]);
+    return sortGames(result, sort, recommendedRank);
+  }, [tabGames, hideUnconfirmed, searchText, selectedChips, sort, tab, recommendedRank]);
 
   const visibleGames = filteredGames.slice(0, visibleCount);
   const hasMore = visibleCount < filteredGames.length;
@@ -240,7 +302,7 @@ export function GameCatalogue({ games }: { games: GameCardData[] }) {
               }}
               className="max-w-xs"
             />
-            <SortSelect value={sort} onChange={setSort} />
+            <SortSelect value={sort} onChange={setSort} hasTracked={hasTracked} />
             <div className="flex items-center gap-2">
               <Switch
                 id="hide-unconfirmed-desktop"
@@ -291,7 +353,7 @@ export function GameCatalogue({ games }: { games: GameCardData[] }) {
               <div className="flex flex-col gap-4 overflow-y-auto px-4 pb-2">
                 <div>
                   <p className="mb-2 text-sm font-medium">Sort by</p>
-                  <SortSelect value={sort} onChange={setSort} />
+                  <SortSelect value={sort} onChange={setSort} hasTracked={hasTracked} />
                 </div>
                 <div className="flex items-center gap-2">
                   <Switch
@@ -331,6 +393,18 @@ export function GameCatalogue({ games }: { games: GameCardData[] }) {
             </DrawerContent>
           </Drawer>
         </div>
+
+        {/* Recommended sort info banner */}
+        {sort === "recommended" && (
+          <div className="mt-3 flex items-start gap-2 rounded-md border border-border bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+            <Info className="mt-0.5 size-3.5 shrink-0" />
+            <span>
+              {recommendedLoading
+                ? "Computing recommendations from your watchlist…"
+                : "Sorted by similarity to your watchlist and played games. Add more games to improve results."}
+            </span>
+          </div>
+        )}
 
         {/* Results count */}
         <p className="mt-3 text-sm text-muted-foreground">

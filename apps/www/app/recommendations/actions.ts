@@ -7,6 +7,7 @@ import { getVectors, queryVectors } from "@/lib/vectors";
 const MAX_INPUT = 50;
 const QUERY_TOP_K = 20;
 const RETURN_LIMIT = 5;
+const ORDER_TOP_K = 100;
 
 export async function getRecommendations(gameIds: string[]): Promise<GameCardData[]> {
   try {
@@ -59,6 +60,47 @@ export async function getRecommendations(gameIds: string[]): Promise<GameCardDat
     return results;
   } catch (err) {
     console.error("Recommendations failed:", err);
+    return [];
+  }
+}
+
+/**
+ * Returns an ordered list of game IDs ranked by similarity to the user's taste vector.
+ * Used by the "Sort by Recommended" option in the game catalogue.
+ * Games not in the watchlist are ranked; watchlist games are excluded from results.
+ */
+export async function getRecommendedOrder(gameIds: string[]): Promise<string[]> {
+  try {
+    if (gameIds.length === 0) return [];
+
+    const capped = gameIds.slice(0, MAX_INPUT);
+
+    const embeddings = await getVectors(capped);
+    if (embeddings.size === 0) return [];
+
+    // Average into a taste vector
+    const first = embeddings.values().next().value;
+    if (!first) return [];
+    const dim = first.length;
+    const avg = new Float32Array(dim);
+    for (const vec of embeddings.values()) {
+      for (let i = 0; i < dim; i++) {
+        avg[i] += vec[i];
+      }
+    }
+    const count = embeddings.size;
+    for (let i = 0; i < dim; i++) {
+      avg[i] /= count;
+    }
+
+    // Query a large neighborhood to rank as many games as possible
+    const vectorResults = await queryVectors(Array.from(avg), ORDER_TOP_K);
+
+    // Filter out tracked games, return ordered IDs
+    const inputSet = new Set(capped);
+    return vectorResults.filter((vr) => !inputSet.has(vr.key)).map((vr) => vr.key);
+  } catch (err) {
+    console.error("Recommended order failed:", err);
     return [];
   }
 }
