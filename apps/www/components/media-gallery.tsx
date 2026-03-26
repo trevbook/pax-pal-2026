@@ -29,7 +29,7 @@ function isVideoUrl(url: string): boolean {
   );
 }
 
-/** Filter out YouTube URLs and sort so images come first, videos last */
+/** Filter out YouTube URLs and sort so videos come first, images last */
 function filterAndSort(urls: string[]): string[] {
   const images: string[] = [];
   const videos: string[] = [];
@@ -38,7 +38,7 @@ function filterAndSort(urls: string[]): string[] {
     if (isVideoUrl(url)) videos.push(url);
     else images.push(url);
   }
-  return [...images, ...videos];
+  return [...videos, ...images];
 }
 
 // ---------------------------------------------------------------------------
