@@ -30,7 +30,14 @@ jobs:
           bun-version: latest
       - name: Install deps
         run: bun install --frozen-lockfile
-      - name: Install SST platform deps
-        run: bunx sst install --print-logs
+      - name: Bootstrap SST platform deps
+        run: |
+          # First attempt creates .sst/platform/ but may fail evaluating config
+          bunx sst deploy --stage production --print-logs 2>&1 || true
+          # Install platform deps with system bun if the directory was created
+          if [ -f .sst/platform/package.json ]; then
+            echo "Installing SST platform dependencies..."
+            cd .sst/platform && bun install
+          fi
       - name: Deploy
         run: bunx sst deploy --stage production --print-logs
