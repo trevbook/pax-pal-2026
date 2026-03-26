@@ -33,6 +33,11 @@ const features = [
       "Hybrid text + AI-powered semantic search to find games by vibe, not just keywords.",
   },
   {
+    title: "AI Chatbot",
+    description:
+      'Ask PAX Pal anything — "I have 2 hours, what should I play?" — and get personalized answers.',
+  },
+  {
     title: "Personalized Recommendations",
     description: "Watchlist a few games and get AI-driven picks tailored to your taste.",
   },
@@ -43,6 +48,11 @@ const features = [
   {
     title: "Track Your PAX",
     description: "Watchlist games before the show, mark them as played, rate your favorites.",
+  },
+  {
+    title: "Reviews & Social",
+    description:
+      "Claim a username, write reviews with AI moderation, and share your profile with friends.",
   },
   {
     title: "Mobile-First",
