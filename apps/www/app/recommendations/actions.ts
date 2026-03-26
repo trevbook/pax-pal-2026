@@ -41,15 +41,19 @@ export async function getRecommendations(gameIds: string[]): Promise<GameCardDat
     const inputSet = new Set(capped);
     const filtered = vectorResults.filter((vr) => !inputSet.has(vr.key));
 
-    // 6. Hydrate from cache and return top results
+    // 6. Hydrate from cache, deduplicate by slug, and return top results
     const allGames = await getAllActiveGames();
     const gameById = new Map(allGames.map((g) => [g.id, g]));
 
     const results: GameCardData[] = [];
+    const seenSlugs = new Set<string>();
     for (const vr of filtered) {
       if (results.length >= RETURN_LIMIT) break;
       const game = gameById.get(vr.key);
-      if (game) results.push(game);
+      if (!game) continue;
+      if (seenSlugs.has(game.slug)) continue;
+      seenSlugs.add(game.slug);
+      results.push(game);
     }
 
     return results;

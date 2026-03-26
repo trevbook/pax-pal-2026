@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { Game, HarmonizedExhibitor, HarmonizedGame, InclusionTier } from "@pax-pal/core";
 import { classify } from "./classify/classify";
 import type { GameClassification } from "./classify/types";
+import { dedup } from "./dedup/dedup";
 import { discover } from "./discover/discover";
 import { embed } from "./embed/embed";
 import { enrich } from "./enrich/enrich";
@@ -308,6 +309,32 @@ async function runEmbed(skipCache: boolean, limit?: number) {
   console.log("[embed] Done.");
 }
 
+async function runDedup() {
+  console.log("\n[dedup] Loading embedded games...");
+
+  const embeddedDir = join(DATA_DIR, "05-embedded");
+  const games = (await Bun.file(join(embeddedDir, "games.json")).json()) as Game[];
+
+  console.log(`  Games before dedup: ${games.length}`);
+
+  const result = dedup(games);
+
+  console.log(`  Games after dedup: ${result.games.length}`);
+  console.log(`  Duplicates removed: ${result.stats.duplicatesRemoved}`);
+
+  if (result.stats.merged.length > 0) {
+    console.log("  Merged:");
+    for (const m of result.stats.merged) {
+      console.log(`    "${m.name}": kept ${m.kept}, removed ${m.removed.join(", ")}`);
+    }
+  }
+
+  const outDir = join(DATA_DIR, "05-embedded");
+  await writeJson(join(outDir, "games.json"), result.games);
+
+  console.log("[dedup] Done.");
+}
+
 const VECTOR_BUCKET_NAME = process.env.VECTOR_BUCKET_NAME ?? "pax-pal-vectors-production";
 const VECTOR_INDEX_NAME = process.env.VECTOR_INDEX_NAME ?? "game-embeddings";
 
@@ -449,6 +476,7 @@ const STAGES = [
   "enrich",
   "classify",
   "embed",
+  "dedup",
   "setup-vectors",
   "load",
   "map",
@@ -504,6 +532,10 @@ async function main() {
 
   if (stage === "embed" || stage === "all") {
     await runEmbed(skipCache, tier3Limit);
+  }
+
+  if (stage === "dedup" || stage === "all") {
+    await runDedup();
   }
 
   if (stage === "setup-vectors") {
