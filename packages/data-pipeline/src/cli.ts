@@ -17,6 +17,7 @@ import { transformDemos, transformExhibitors } from "./scrape/api";
 import { parseDemoPage } from "./scrape/demos";
 import { parseExhibitorPage } from "./scrape/exhibitors";
 import { fetchApi, fetchLocalHtml } from "./scrape/fetch";
+import { computeSimilarGames } from "./similar/similar";
 
 const DATA_DIR = join(import.meta.dirname, "../../../miscellaneous/data");
 
@@ -335,6 +336,24 @@ async function runDedup() {
   console.log("[dedup] Done.");
 }
 
+async function runSimilar() {
+  console.log("\n[similar] Computing similar games from embeddings...");
+
+  const embeddedDir = join(DATA_DIR, "05-embedded");
+  const games = (await Bun.file(join(embeddedDir, "games.json")).json()) as Game[];
+
+  console.log(`  Games: ${games.length}`);
+
+  const result = computeSimilarGames(games);
+
+  console.log(`  Computed: ${result.stats.computed}`);
+  console.log(`  Skipped (no embedding): ${result.stats.skipped}`);
+
+  await writeJson(join(embeddedDir, "games.json"), result.games);
+
+  console.log("[similar] Done.");
+}
+
 const VECTOR_BUCKET_NAME = process.env.VECTOR_BUCKET_NAME ?? "pax-pal-vectors-production";
 const VECTOR_INDEX_NAME = process.env.VECTOR_INDEX_NAME ?? "game-embeddings";
 
@@ -477,6 +496,7 @@ const STAGES = [
   "classify",
   "embed",
   "dedup",
+  "similar",
   "setup-vectors",
   "load",
   "map",
@@ -536,6 +556,10 @@ async function main() {
 
   if (stage === "dedup" || stage === "all") {
     await runDedup();
+  }
+
+  if (stage === "similar" || stage === "all") {
+    await runSimilar();
   }
 
   if (stage === "setup-vectors") {
