@@ -95,6 +95,9 @@ export function GameCard({
         </div>
         <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
           <h3 className="truncate text-sm font-semibold leading-tight">{game.name}</h3>
+          {game.tagline && (
+            <p className="truncate text-xs italic text-muted-foreground/70">{game.tagline}</p>
+          )}
           <p className="truncate text-xs text-muted-foreground">
             {game.exhibitor}
             {booth ? ` · ${booth.label}` : ""}

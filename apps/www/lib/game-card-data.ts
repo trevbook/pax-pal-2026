@@ -20,6 +20,7 @@ export interface GameCardData {
   name: string;
   slug: string;
   type: GameType;
+  tagline: string | null;
   summary: string | null;
   imageUrl: string | null;
   exhibitor: string;
@@ -32,6 +33,7 @@ export interface GameCardData {
   mechanics: TabletopMechanic[] | null;
   platforms: Platform[] | null;
   releaseStatus: string | null;
+  similarGameIds: string[];
   discoverySource: DiscoverySource | null;
   /** True when the game is confirmed to appear at PAX (demo page or inclusionTier=confirmed). */
   confirmed: boolean;
@@ -44,6 +46,7 @@ export function toGameCardData(game: Game | GameDynamoItem): GameCardData {
     name: game.name,
     slug: game.slug,
     type: game.type,
+    tagline: game.tagline,
     summary: game.summary,
     imageUrl: game.imageUrl,
     exhibitor: game.exhibitor,
@@ -56,6 +59,7 @@ export function toGameCardData(game: Game | GameDynamoItem): GameCardData {
     mechanics: game.mechanics,
     platforms: game.platforms,
     releaseStatus: game.releaseStatus,
+    similarGameIds: game.similarGameIds ?? [],
     discoverySource: game.discoverySource,
     confirmed: isConfirmed(game.discoverySource, game.discoveryMeta?.inclusionTier),
   };

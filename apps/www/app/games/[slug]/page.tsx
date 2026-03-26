@@ -77,6 +77,7 @@ export default async function GameDetailPage({ params }: { params: Promise<{ slu
   // Resolve similar games from pre-computed IDs (exclude self + exhibitor siblings as safety net)
   const gameById = new Map(allGames.map((g) => [g.id, g]));
   const similarGames = (game.similarGameIds ?? [])
+    .slice(0, 3)
     .map((id) => gameById.get(id))
     .filter(
       (g): g is NonNullable<typeof g> =>
@@ -157,12 +158,19 @@ export default async function GameDetailPage({ params }: { params: Promise<{ slu
           </div>
         )}
 
-        {/* Description */}
-        {game.description && (
+        {/* Tagline + Description */}
+        {(game.tagline || game.description) && (
           <div className="mt-6">
-            <p className="whitespace-pre-line text-sm leading-relaxed text-foreground/90">
-              {game.description}
-            </p>
+            {game.tagline && (
+              <p className="mb-2 text-sm font-medium italic text-muted-foreground">
+                {game.tagline}
+              </p>
+            )}
+            {game.description && (
+              <p className="whitespace-pre-line text-sm leading-relaxed text-foreground/90">
+                {game.description}
+              </p>
+            )}
           </div>
         )}
 
