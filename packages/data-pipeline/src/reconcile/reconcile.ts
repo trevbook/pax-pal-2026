@@ -57,6 +57,11 @@ export function normalizeForMatch(name: string): string {
     name
       .replace(/\s*[-–—:]\s*(pax|demo|preview|hands[- ]?on|playable|beta).*$/i, "")
       .replace(/\s*\((pax|demo|preview|hands[- ]?on|playable|beta)[^)]*\)/i, "")
+      .replace(/\s*\[(pax|demo|preview|hands[- ]?on|playable|beta)[^\]]*\]/i, "")
+      .replace(
+        /\s+(pax|demo|preview|hands[- ]?on|playable|beta)\s*(edition|version|build)?\s*$/i,
+        "",
+      )
       .trim(),
   );
 }

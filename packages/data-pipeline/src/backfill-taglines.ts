@@ -67,6 +67,13 @@ async function main() {
   const files = (await readdir(WEB_CACHE_DIR)).filter((f) => f.endsWith(".json"));
   console.log(`[backfill-taglines] Found ${files.length} web cache files.`);
 
+  // Load games.json to find ALL game IDs (including those with no cache file)
+  const games: Array<{ id: string; name: string }> = await Bun.file(
+    join(DATA_DIR, "03-enriched/games.json"),
+  ).json();
+  const nameById = new Map(games.map((g) => [g.id, g.name]));
+  const cacheFileIds = new Set(files.map((f) => f.replace(".json", "")));
+
   // Filter to files that don't already have a tagline
   const toProcess: { file: string; gameId: string; data: Record<string, unknown> }[] = [];
 
@@ -74,14 +81,20 @@ async function main() {
     const raw = await readFile(join(WEB_CACHE_DIR, file), "utf-8");
     const data = JSON.parse(raw);
 
-    // Skip null cache entries (games where web search found nothing)
-    if (data === null) continue;
-
-    // Skip if tagline already exists
-    if (data.tagline) continue;
+    // Skip if tagline already exists (non-null entries only)
+    if (data?.tagline) continue;
 
     const gameId = file.replace(".json", "");
-    toProcess.push({ file, gameId, data });
+    // For null cache entries, use an empty object so we can still generate a name-only tagline
+    toProcess.push({ file, gameId, data: data ?? {} });
+  }
+
+  // Add games that have no cache file at all (never web-enriched)
+  for (const game of games) {
+    if (!cacheFileIds.has(game.id)) {
+      const file = `${game.id}.json`;
+      toProcess.push({ file, gameId: game.id, data: {} });
+    }
   }
 
   const total = limit ? Math.min(limit, toProcess.length) : toProcess.length;
@@ -89,12 +102,6 @@ async function main() {
 
   console.log(`[backfill-taglines] ${toProcess.length} need taglines, processing ${total}.`);
   if (dryRun) console.log("[backfill-taglines] DRY RUN — no files will be written.");
-
-  // Load games.json for name lookup
-  const games: Array<{ id: string; name: string }> = await Bun.file(
-    join(DATA_DIR, "03-enriched/games.json"),
-  ).json();
-  const nameById = new Map(games.map((g) => [g.id, g.name]));
 
   const bar = new cliProgress.SingleBar({
     format: "[backfill-taglines] {bar} {percentage}% | {value}/{total} | ETA: {eta_formatted}",
@@ -158,8 +165,12 @@ async function main() {
     let patched = 0;
     for (const entry of meta) {
       const tagline = taglineByGameId.get(entry.gameId);
-      if (tagline !== undefined && entry.web) {
-        entry.web.tagline = tagline;
+      if (tagline !== undefined) {
+        if (entry.web) {
+          entry.web.tagline = tagline;
+        } else {
+          entry.web = { tagline } as Record<string, unknown>;
+        }
         patched++;
       }
     }

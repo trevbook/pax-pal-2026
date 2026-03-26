@@ -6,6 +6,7 @@ function makeGame(overrides: Partial<Game> & { id: string; name: string }): Game
   return {
     slug: overrides.name.toLowerCase().replace(/\s+/g, "-"),
     type: "video_game",
+    tagline: null,
     summary: null,
     description: null,
     imageUrl: null,
@@ -96,6 +97,16 @@ describe("dedup", () => {
     const result = dedup(games);
     expect(result.games).toHaveLength(1);
     expect(result.games[0].id).toBe("discovered:ex-2:foo");
+  });
+
+  test("removes duplicates with trailing Demo (no punctuation)", () => {
+    const games = [
+      makeGame({ id: "demo:1", name: "AO: Containment Breach", description: "desc" }),
+      makeGame({ id: "demo:2", name: "AO: Containment Breach Demo" }),
+    ];
+    const result = dedup(games);
+    expect(result.games).toHaveLength(1);
+    expect(result.stats.duplicatesRemoved).toBe(1);
   });
 
   test("handles three-way duplicates", () => {

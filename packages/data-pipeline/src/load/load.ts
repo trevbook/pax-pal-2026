@@ -7,7 +7,7 @@ import {
   PutVectorsCommand,
   S3VectorsClient,
 } from "@aws-sdk/client-s3vectors";
-import { BatchWriteCommand, DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
+import { BatchWriteCommand, DynamoDBDocumentClient, ScanCommand } from "@aws-sdk/lib-dynamodb";
 import type { Game, HarmonizedExhibitor } from "@pax-pal/core";
 import { SingleBar } from "cli-progress";
 import type { LoadOptions, LoadStats } from "./types";
@@ -100,6 +100,57 @@ async function batchWriteDynamo(
   }
 
   bar.stop();
+}
+
+/**
+ * Remove stale game/exhibitor records from DynamoDB that aren't in the current pipeline output.
+ */
+async function purgeStaleRecords(
+  docClient: DynamoDBDocumentClient,
+  tableName: string,
+  validPks: Set<string>,
+  pkPrefix: string,
+): Promise<number> {
+  // Scan for all records with the given prefix
+  const staleKeys: Array<{ pk: string }> = [];
+  let lastKey: Record<string, unknown> | undefined;
+
+  do {
+    const result = await docClient.send(
+      new ScanCommand({
+        TableName: tableName,
+        FilterExpression: "#s = :active AND begins_with(pk, :prefix)",
+        ExpressionAttributeNames: { "#s": "status" },
+        ExpressionAttributeValues: { ":active": "active", ":prefix": pkPrefix },
+        ProjectionExpression: "pk",
+        ExclusiveStartKey: lastKey,
+      }),
+    );
+    for (const item of (result.Items as Array<{ pk: string }>) ?? []) {
+      if (!validPks.has(item.pk)) {
+        staleKeys.push(item);
+      }
+    }
+    lastKey = result.LastEvaluatedKey;
+  } while (lastKey);
+
+  if (staleKeys.length === 0) return 0;
+
+  // Delete stale records in batches of 25
+  const batches = chunk(staleKeys, 25);
+  for (const batch of batches) {
+    await docClient.send(
+      new BatchWriteCommand({
+        RequestItems: {
+          [tableName]: batch.map((item) => ({
+            DeleteRequest: { Key: { pk: item.pk } },
+          })),
+        },
+      }),
+    );
+  }
+
+  return staleKeys.length;
 }
 
 async function batchPutVectors(
@@ -236,6 +287,7 @@ export async function load(
     games: { total: games.length, written: 0, skipped: 0, errors: 0 },
     exhibitors: { total: exhibitors.length, written: 0, skipped: 0, errors: 0 },
     vectors: { total: games.length, written: 0, skipped: 0, errors: 0 },
+    purged: { games: 0, exhibitors: 0 },
   };
 
   // Build DynamoDB items
@@ -276,6 +328,26 @@ export async function load(
   // 3. Write vectors to S3 Vectors
   console.log(`  Writing vectors to S3 Vectors...`);
   await batchPutVectors(s3VectorsClient, options.vectorIndexArn, games, stats.vectors);
+
+  // 4. Purge stale records no longer in pipeline output
+  const validGamePks = new Set(gameItems.map((item) => item.pk as string));
+  const validExhibitorPks = new Set(exhibitorItems.map((item) => item.pk as string));
+
+  console.log("  Purging stale game records...");
+  stats.purged.games = await purgeStaleRecords(
+    docClient,
+    options.gamesTableName,
+    validGamePks,
+    "GAME#",
+  );
+
+  console.log("  Purging stale exhibitor records...");
+  stats.purged.exhibitors = await purgeStaleRecords(
+    docClient,
+    options.exhibitorsTableName,
+    validExhibitorPks,
+    "EXHIBITOR#",
+  );
 
   return { stats };
 }

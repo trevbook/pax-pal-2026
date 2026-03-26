@@ -74,6 +74,17 @@ describe("normalizeForMatch", () => {
     expect(normalizeForMatch("Cool Game - Playable Demo")).toBe("cool-game");
   });
 
+  it("strips trailing Demo without punctuation", () => {
+    expect(normalizeForMatch("AO: Containment Breach Demo")).toBe("ao-containment-breach");
+    expect(normalizeForMatch("Cool Game Demo")).toBe("cool-game");
+    expect(normalizeForMatch("Cool Game Demo Edition")).toBe("cool-game");
+  });
+
+  it("strips bracket-wrapped suffixes", () => {
+    expect(normalizeForMatch("Cool Game [Demo]")).toBe("cool-game");
+    expect(normalizeForMatch("Cool Game [PAX Preview]")).toBe("cool-game");
+  });
+
   it("leaves normal names alone", () => {
     expect(normalizeForMatch("Cool Game")).toBe("cool-game");
     expect(normalizeForMatch("Cool Game 2: Reloaded")).toBe("cool-game-2-reloaded");

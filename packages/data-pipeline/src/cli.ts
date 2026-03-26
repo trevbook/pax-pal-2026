@@ -435,6 +435,9 @@ async function runLoad(dryRun: boolean) {
   console.log(
     `  Vectors: ${result.stats.vectors.written} written, ${result.stats.vectors.skipped} skipped (no embedding), ${result.stats.vectors.errors} errors`,
   );
+  console.log(
+    `  Purged: ${result.stats.purged.games} stale games, ${result.stats.purged.exhibitors} stale exhibitors`,
+  );
 
   console.log("[load] Done.");
 }

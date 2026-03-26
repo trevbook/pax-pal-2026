@@ -5,6 +5,7 @@ export interface LoadStats {
   games: { total: number; written: number; skipped: number; errors: number };
   exhibitors: { total: number; written: number; skipped: number; errors: number };
   vectors: { total: number; written: number; skipped: number; errors: number };
+  purged: { games: number; exhibitors: number };
 }
 
 export interface LoadOptions {

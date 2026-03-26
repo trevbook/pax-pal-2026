@@ -247,8 +247,14 @@ describe("load", () => {
     // Mock DynamoDB document client
     const mockDocClient = {
       send: async (cmd: unknown) => {
-        const command = cmd as { input: { RequestItems: Record<string, unknown[]> } };
-        for (const [tableName, items] of Object.entries(command.input.RequestItems)) {
+        const command = cmd as { input: Record<string, unknown> };
+        // Handle ScanCommand (purge stale records) — return empty results
+        if (!command.input.RequestItems) {
+          return { Items: [], LastEvaluatedKey: undefined };
+        }
+        for (const [tableName, items] of Object.entries(
+          command.input.RequestItems as Record<string, unknown[]>,
+        )) {
           dynamoWrites.push({ tableName, items });
         }
         return {};
