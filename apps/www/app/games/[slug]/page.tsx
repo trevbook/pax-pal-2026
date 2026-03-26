@@ -1,4 +1,14 @@
-import { Clock, ExternalLink, Globe, MapPin, Monitor, Smartphone, Users, Zap } from "lucide-react";
+import {
+  AlertTriangle,
+  Clock,
+  ExternalLink,
+  Globe,
+  MapPin,
+  Monitor,
+  Smartphone,
+  Users,
+  Zap,
+} from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -131,6 +141,20 @@ export default async function GameDetailPage({ params }: { params: Promise<{ slu
               Find on Map
             </Button>
           </Link>
+        )}
+
+        {/* Unconfirmed alert banner */}
+        {!confirmed && (
+          <div className="mt-4 rounded-lg border border-yellow-300 bg-yellow-50 px-4 py-3 dark:border-yellow-700 dark:bg-yellow-950/40">
+            <div className="flex gap-3">
+              <AlertTriangle className="mt-0.5 size-5 shrink-0 text-yellow-600 dark:text-yellow-400" />
+              <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                This game hasn't been confirmed for PAX East 2026. We identified it through web
+                searches based on {game.exhibitor}'s booth listing, but they haven't listed a
+                playable demo on the PAX website.
+              </p>
+            </div>
+          </div>
         )}
 
         {/* Description */}
@@ -435,7 +459,6 @@ export default async function GameDetailPage({ params }: { params: Promise<{ slu
             type: game.type,
             exhibitor: game.exhibitor,
           }}
-          confirmed={confirmed}
           initialReviews={reviews}
         />
       </div>

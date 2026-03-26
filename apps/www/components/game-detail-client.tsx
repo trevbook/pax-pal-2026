@@ -1,7 +1,6 @@
 "use client";
 
 import type { GameType } from "@pax-pal/core";
-import { AlertTriangle } from "lucide-react";
 import { useCallback, useState } from "react";
 import type { GameReview } from "@/app/actions/social";
 import { useTracking } from "@/hooks/use-tracking";
@@ -20,12 +19,11 @@ interface GameDetailClientProps {
     type: GameType;
     exhibitor: string;
   };
-  confirmed: boolean;
   initialReviews: GameReview[];
 }
 
 /** Client wrapper that provides tracking state + action bar + played/report modals + reviews. */
-export function GameDetailClient({ game, confirmed, initialReviews }: GameDetailClientProps) {
+export function GameDetailClient({ game, initialReviews }: GameDetailClientProps) {
   const tracking = useTracking(game);
   const [reportOpen, setReportOpen] = useState(false);
   const [playedModalOpen, setPlayedModalOpen] = useState(false);
@@ -48,27 +46,6 @@ export function GameDetailClient({ game, confirmed, initialReviews }: GameDetail
 
   return (
     <>
-      {/* Unconfirmed alert banner */}
-      {!confirmed && (
-        <div className="mt-6 rounded-lg border border-yellow-300 bg-yellow-50 px-4 py-3 dark:border-yellow-700 dark:bg-yellow-950/40">
-          <div className="flex gap-3">
-            <AlertTriangle className="mt-0.5 size-5 shrink-0 text-yellow-600 dark:text-yellow-400" />
-            <p className="text-sm text-yellow-800 dark:text-yellow-200">
-              This game hasn't been confirmed for PAX East 2026. We identified it through web
-              searches based on {game.exhibitor}'s booth listing, but they haven't listed a playable
-              demo on the PAX website.{" "}
-              <button
-                type="button"
-                onClick={() => setReportOpen(true)}
-                className="font-medium underline underline-offset-2 hover:text-yellow-900 dark:hover:text-yellow-100"
-              >
-                Report incorrect data
-              </button>
-            </p>
-          </div>
-        </div>
-      )}
-
       {/* Community reviews */}
       <ReviewsSection reviews={reviews} />
 
