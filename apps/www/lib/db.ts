@@ -27,17 +27,21 @@ const exhibitorsTable = (Resource as unknown as Record<string, { name: string }>
 // Game queries
 // ---------------------------------------------------------------------------
 
-/** Fetch all active games, projected to GameCardData. Cached per-worker to avoid DynamoDB throttling during SSG. */
-let _allGamesCache: Promise<GameCardData[]> | null = null;
+/**
+ * Cached full-item scan of all active games. A single scan serves both
+ * getAllActiveGames (card projections) and getGameBySlug (full items),
+ * avoiding the per-page scans that throttle DynamoDB during SSG.
+ */
+let _allFullGamesCache: Promise<GameDynamoItem[]> | null = null;
 
-export function getAllActiveGames(): Promise<GameCardData[]> {
-  if (!_allGamesCache) {
-    _allGamesCache = _fetchAllActiveGames();
+function _getAllFullGames(): Promise<GameDynamoItem[]> {
+  if (!_allFullGamesCache) {
+    _allFullGamesCache = _fetchAllFullGames();
   }
-  return _allGamesCache;
+  return _allFullGamesCache;
 }
 
-async function _fetchAllActiveGames(): Promise<GameCardData[]> {
+async function _fetchAllFullGames(): Promise<GameDynamoItem[]> {
   const items: GameDynamoItem[] = [];
   let lastKey: Record<string, unknown> | undefined;
 
@@ -55,32 +59,23 @@ async function _fetchAllActiveGames(): Promise<GameCardData[]> {
     lastKey = result.LastEvaluatedKey;
   } while (lastKey);
 
-  return items.map(toGameCardData);
+  return items;
+}
+
+/** Fetch all active games, projected to GameCardData. */
+let _allGamesCache: Promise<GameCardData[]> | null = null;
+
+export function getAllActiveGames(): Promise<GameCardData[]> {
+  if (!_allGamesCache) {
+    _allGamesCache = _getAllFullGames().then((items) => items.map(toGameCardData));
+  }
+  return _allGamesCache;
 }
 
 /** Fetch a single game by slug. Returns the full DynamoDB item or null. */
 export async function getGameBySlug(slug: string): Promise<GameDynamoItem | null> {
-  // No GSI on slug — scan with filter. Fine for ~395 items.
-  // Cannot use Limit with FilterExpression — Limit caps items *scanned*, not *returned*.
-  let lastKey: Record<string, unknown> | undefined;
-
-  do {
-    const result = await ddb.send(
-      new ScanCommand({
-        TableName: gamesTable,
-        FilterExpression: "#s = :active AND slug = :slug",
-        ExpressionAttributeNames: { "#s": "status" },
-        ExpressionAttributeValues: { ":active": "active", ":slug": slug },
-        ExclusiveStartKey: lastKey,
-      }),
-    );
-    if (result.Items && result.Items.length > 0) {
-      return result.Items[0] as GameDynamoItem;
-    }
-    lastKey = result.LastEvaluatedKey;
-  } while (lastKey);
-
-  return null;
+  const allGames = await _getAllFullGames();
+  return allGames.find((g) => g.slug === slug) ?? null;
 }
 
 /** Fetch games by exhibitor ID, projected to GameCardData. */
