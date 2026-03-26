@@ -60,6 +60,15 @@ export default async function GameDetailPage({ params }: { params: Promise<{ slu
   const allGames = await getAllActiveGames();
   const otherGames = allGames.filter((g) => g.exhibitorId === game.exhibitorId && g.id !== game.id);
 
+  // Resolve similar games from pre-computed IDs (exclude self + exhibitor siblings as safety net)
+  const gameById = new Map(allGames.map((g) => [g.id, g]));
+  const similarGames = (game.similarGameIds ?? [])
+    .map((id) => gameById.get(id))
+    .filter(
+      (g): g is NonNullable<typeof g> =>
+        g != null && g.id !== game.id && g.exhibitorId !== game.exhibitorId,
+    );
+
   // Build the Find on Map href
   let mapHref: string | null = null;
   if (game.boothId && game.boothId !== "UNSPECIFIED") {
@@ -132,7 +141,7 @@ export default async function GameDetailPage({ params }: { params: Promise<{ slu
         {/* Media gallery — client component, lazy-loaded images */}
         {game.mediaUrls && game.mediaUrls.length > 0 && (
           <div className="mt-6">
-            <MediaGallery urls={game.mediaUrls} />
+            <MediaGallery urls={game.mediaUrls} videoThumbnails={game.videoThumbnails} />
           </div>
         )}
 
@@ -388,6 +397,21 @@ export default async function GameDetailPage({ params }: { params: Promise<{ slu
               </Link>
               <div className="flex flex-col gap-2">
                 {otherGames.slice(0, 3).map((g) => (
+                  <GameCard key={g.id} game={g} compact />
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Similar games — pre-computed from embedding cosine similarity */}
+        {similarGames.length > 0 && (
+          <>
+            <Separator className="my-6" />
+            <div>
+              <h3 className="mb-3 text-sm font-semibold text-muted-foreground">Similar Games</h3>
+              <div className="flex flex-col gap-2">
+                {similarGames.map((g) => (
                   <GameCard key={g.id} game={g} compact />
                 ))}
               </div>
