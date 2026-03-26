@@ -131,6 +131,9 @@ export function GameCard({
         {/* Info */}
         <div className="flex min-w-0 flex-1 flex-col justify-center gap-1">
           <h3 className="truncate text-sm font-semibold leading-tight">{game.name}</h3>
+          {game.tagline && (
+            <p className="truncate text-xs italic text-muted-foreground/70">{game.tagline}</p>
+          )}
           <p className="truncate text-xs text-muted-foreground">
             {game.exhibitor}
             {booth ? ` · ${booth.label}` : ""}
@@ -172,6 +175,10 @@ export function GameCard({
 
       <div className="flex flex-1 flex-col gap-1.5 p-3">
         <h3 className="text-sm font-semibold leading-tight group-hover:underline">{game.name}</h3>
+
+        {game.tagline && (
+          <p className="truncate text-xs italic text-muted-foreground/70">{game.tagline}</p>
+        )}
 
         <p className="text-xs text-muted-foreground">
           {game.exhibitor}

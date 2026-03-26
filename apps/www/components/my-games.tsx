@@ -370,29 +370,30 @@ function ShareButton({
     }
   }, [user, watchlist, played]);
 
-  // User is logged in — share profile link
-  if (user) {
-    return (
-      <Button variant="default" className="w-full" onClick={handleShareProfile} disabled={syncing}>
-        {syncing ? (
-          <>Syncing...</>
-        ) : (
-          <>
-            <Link2 className="mr-2 size-4" />
-            Share Your Profile
-          </>
-        )}
-      </Button>
-    );
-  }
-
-  // User not logged in — prompt to create account
   return (
     <>
-      <Button variant="default" className="w-full" onClick={() => setShowUsernameModal(true)}>
-        <User className="mr-2 size-4" />
-        Create Account to Share Profile
-      </Button>
+      {user ? (
+        <Button
+          variant="default"
+          className="w-full"
+          onClick={handleShareProfile}
+          disabled={syncing}
+        >
+          {syncing ? (
+            <>Syncing...</>
+          ) : (
+            <>
+              <Link2 className="mr-2 size-4" />
+              Share Your Profile
+            </>
+          )}
+        </Button>
+      ) : (
+        <Button variant="default" className="w-full" onClick={() => setShowUsernameModal(true)}>
+          <User className="mr-2 size-4" />
+          Create Account to Share Profile
+        </Button>
+      )}
       <UsernameModal open={showUsernameModal} onOpenChange={setShowUsernameModal} />
     </>
   );
