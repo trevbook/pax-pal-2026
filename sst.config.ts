@@ -18,6 +18,7 @@ export default $config({
     await import("./infra/secrets");
     await import("./infra/database");
     await import("./infra/vectors");
+    await import("./infra/rum");
     await import("./infra/frontend");
   },
 });
