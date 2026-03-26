@@ -326,8 +326,10 @@ function ShareButton({
         : "https://pax-pal-2026.trevbook.com";
     const shareUrl = `${origin}/profile/${user.username}`;
 
-    // Try native share dialog first (secure contexts only), fall back to clipboard
-    if (window.isSecureContext && "share" in navigator) {
+    const isSecure = window.location.protocol === "https:";
+
+    // Try native share dialog first (HTTPS only)
+    if (isSecure && "share" in navigator) {
       try {
         await navigator.share({
           title: `${user.username}'s PAX Pal Profile`,
@@ -339,24 +341,32 @@ function ShareButton({
       }
     }
 
-    // clipboard.writeText requires a secure context — use execCommand fallback for plain HTTP
-    try {
-      await navigator.clipboard.writeText(shareUrl);
-      toast.success("Profile link copied to clipboard!");
-    } catch {
+    // Try modern clipboard API (HTTPS + localhost only)
+    if (isSecure || window.location.hostname === "localhost") {
       try {
-        const textarea = document.createElement("textarea");
-        textarea.value = shareUrl;
-        textarea.style.position = "fixed";
-        textarea.style.opacity = "0";
-        document.body.appendChild(textarea);
-        textarea.select();
-        document.execCommand("copy");
-        document.body.removeChild(textarea);
+        await navigator.clipboard.writeText(shareUrl);
         toast.success("Profile link copied to clipboard!");
+        return;
       } catch {
-        toast.error("Unable to copy link");
+        // Fall through to legacy fallback
       }
+    }
+
+    // Legacy execCommand fallback for plain HTTP (e.g. LAN dev)
+    const textarea = document.createElement("textarea");
+    textarea.value = shareUrl;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.left = "-9999px";
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.setSelectionRange(0, textarea.value.length);
+    const ok = document.execCommand("copy");
+    document.body.removeChild(textarea);
+    if (ok) {
+      toast.success("Profile link copied to clipboard!");
+    } else {
+      toast.error("Unable to copy link");
     }
   }, [user, watchlist, played]);
 
