@@ -8,6 +8,26 @@ import { GameCard } from "./game-card";
 import { Skeleton } from "./ui/skeleton";
 
 const DEBOUNCE_MS = 1000;
+const CACHE_KEY = "pax-pal-recommendations";
+
+function readCache(idsKey: string): GameCardData[] | null {
+  try {
+    const raw = sessionStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const cached = JSON.parse(raw) as { key: string; results: GameCardData[] };
+    return cached.key === idsKey ? cached.results : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCache(idsKey: string, results: GameCardData[]) {
+  try {
+    sessionStorage.setItem(CACHE_KEY, JSON.stringify({ key: idsKey, results }));
+  } catch {
+    // storage full — ignore
+  }
+}
 
 export function RecommendedGames() {
   const tracking = useTrackingList();
@@ -22,10 +42,20 @@ export function RecommendedGames() {
     return [...ids].sort();
   }, [tracking.watchlist, tracking.played]);
 
+  const idsKey = uniqueIds.join(",");
+
   useEffect(() => {
     if (uniqueIds.length === 0) {
       setResults([]);
       setHasFetched(false);
+      return;
+    }
+
+    // Use cached results if the watchlist hasn't changed
+    const cached = readCache(idsKey);
+    if (cached) {
+      setResults(cached);
+      setHasFetched(true);
       return;
     }
 
@@ -36,6 +66,7 @@ export function RecommendedGames() {
       try {
         const recs = await getRecommendations(uniqueIds);
         setResults(recs);
+        writeCache(idsKey, recs);
       } catch {
         setResults([]);
       } finally {
@@ -47,7 +78,7 @@ export function RecommendedGames() {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [uniqueIds]);
+  }, [idsKey, uniqueIds]);
 
   // Don't render when there's nothing to show
   if (uniqueIds.length === 0) return null;
