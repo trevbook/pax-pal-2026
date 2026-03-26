@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths-ignore:
       - "miscellaneous/**"
+      - "justfile"
   workflow_dispatch:
 
 jobs:

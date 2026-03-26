@@ -67,6 +67,7 @@ setup-search GEMINI_KEY:
 load *ARGS:
     bunx sst shell --stage {{STAGE}} -- bun run packages/data-pipeline/src/cli.ts load {{ARGS}}
 
-# Load pipeline data into production
+# Load pipeline data into production and redeploy
 load-prod *ARGS:
     bunx sst shell --stage production -- bun run packages/data-pipeline/src/cli.ts load {{ARGS}}
+    just sst-deploy
