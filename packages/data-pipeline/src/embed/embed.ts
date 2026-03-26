@@ -226,6 +226,7 @@ export function assembleGame(
     mechanics: classification?.mechanics ?? null,
     embedding,
     similarGameIds: [],
+    similarGameScores: [],
     discoverySource: game.discoverySource,
     discoveryMeta: game.discoveryMeta ?? null,
     sourcePages: game.sourcePages,

@@ -15,9 +15,11 @@ interface TrackedGames {
 /**
  * Score candidate games by weighted overlap of pre-computed similarity lists.
  *
- * For each tracked game, we walk its `similarGameIds` (top 10 neighbors).
- * A neighbor at rank r (0-indexed) receives `(10 - r) * multiplier` points,
- * where played games contribute 1.5x and watchlisted games contribute 1.0x.
+ * For each tracked game, we walk its `similarGameIds` and use the real cosine
+ * similarity scores (from `similarGameScores`) as weights. Falls back to a
+ * linear rank decay when scores aren't available (pre-existing data).
+ *
+ * Played games contribute 1.5x and watchlisted games contribute 1.0x.
  *
  * This avoids the "embedding averaging blob" problem — diverse tastes produce
  * recommendations from each cluster rather than a muddled centroid.
@@ -34,11 +36,15 @@ function scoreByOverlap(
       const game = gameById.get(id);
       if (!game) continue;
       const neighbors = game.similarGameIds;
+      const simScores = game.similarGameScores;
+      const hasScores = simScores && simScores.length === neighbors.length;
       for (let r = 0; r < neighbors.length; r++) {
         const neighborId = neighbors[r];
         // Skip games the user already tracks
         if (trackedSet.has(neighborId)) continue;
-        const weight = (neighbors.length - r) * multiplier;
+        // Use real cosine similarity when available, otherwise fall back to rank decay
+        const similarity = hasScores ? simScores[r] : (neighbors.length - r) / neighbors.length;
+        const weight = similarity * multiplier;
         scores.set(neighborId, (scores.get(neighborId) ?? 0) + weight);
       }
     }

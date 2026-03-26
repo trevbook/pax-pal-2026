@@ -232,6 +232,8 @@ export interface Game {
   embedding: number[] | null;
   /** Top 10 most similar games by embedding cosine similarity (computed in `similar` pipeline stage). */
   similarGameIds: string[];
+  /** Cosine similarity scores corresponding 1:1 with `similarGameIds` (0–1 range). */
+  similarGameScores: number[];
 
   // Discovery
   /** How this game was discovered. Null for demo-sourced games. */

@@ -34,6 +34,7 @@ export interface GameCardData {
   platforms: Platform[] | null;
   releaseStatus: string | null;
   similarGameIds: string[];
+  similarGameScores: number[];
   discoverySource: DiscoverySource | null;
   /** True when the game is confirmed to appear at PAX (demo page or inclusionTier=confirmed). */
   confirmed: boolean;
@@ -60,6 +61,7 @@ export function toGameCardData(game: Game | GameDynamoItem): GameCardData {
     platforms: game.platforms,
     releaseStatus: game.releaseStatus,
     similarGameIds: game.similarGameIds ?? [],
+    similarGameScores: game.similarGameScores ?? [],
     discoverySource: game.discoverySource,
     confirmed: isConfirmed(game.discoverySource, game.discoveryMeta?.inclusionTier),
   };

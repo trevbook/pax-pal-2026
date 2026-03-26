@@ -36,6 +36,7 @@ function makeGame(overrides: Partial<Game> & { id: string; name: string }): Game
     mechanics: null,
     embedding: null,
     similarGameIds: [],
+    similarGameScores: [],
     discoverySource: null,
     discoveryMeta: null,
     sourcePages: ["demos"],

@@ -53,9 +53,9 @@ export function computeSimilarGames(games: Game[]): {
 
     // Sort by similarity descending, take top N
     scores.sort((x, y) => y.similarity - x.similarity);
-    games[a.index].similarGameIds = scores
-      .slice(0, SIMILAR_COUNT)
-      .map((s) => games[s.gameIndex].id);
+    const topN = scores.slice(0, SIMILAR_COUNT);
+    games[a.index].similarGameIds = topN.map((s) => games[s.gameIndex].id);
+    games[a.index].similarGameScores = topN.map((s) => Math.round(s.similarity * 1000) / 1000);
     computed++;
   }
 

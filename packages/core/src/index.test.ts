@@ -188,6 +188,7 @@ describe("type compatibility", () => {
       mechanics: ["Co-op Play"],
       embedding: null,
       similarGameIds: [],
+      similarGameScores: [],
       discoverySource: null,
       discoveryMeta: null,
       sourcePages: ["exhibitors", "tabletop", "demos"],
