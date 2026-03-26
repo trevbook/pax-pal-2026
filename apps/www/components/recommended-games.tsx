@@ -60,38 +60,22 @@ export function RecommendedGames() {
         Based on your watchlist and played games
       </p>
 
-      {/* Scroll container — bleeds to screen edges for full-width swipe */}
-      <div className="relative -mx-4 mt-3">
-        <div
-          className="flex gap-3 overflow-x-auto px-4 pb-2"
-          style={{
-            scrollSnapType: "x mandatory",
-            WebkitOverflowScrolling: "touch",
-          }}
-        >
-          {loading && !hasFetched
-            ? Array.from({ length: 3 }).map((_, i) => (
-                <div
-                  // biome-ignore lint/suspicious/noArrayIndexKey: skeleton placeholders
-                  key={i}
-                  className="w-[85vw] max-w-sm shrink-0"
-                  style={{ scrollSnapAlign: "center" }}
-                >
-                  <Skeleton className="aspect-[16/9] w-full rounded-lg" />
-                  <Skeleton className="mt-2 h-4 w-3/4 rounded" />
-                  <Skeleton className="mt-1 h-3 w-1/2 rounded" />
+      <div className="mt-3 flex flex-col gap-2">
+        {loading && !hasFetched
+          ? Array.from({ length: 5 }).map((_, i) => (
+              <div
+                // biome-ignore lint/suspicious/noArrayIndexKey: skeleton placeholders
+                key={i}
+                className="flex gap-3 rounded-lg border border-border p-3"
+              >
+                <Skeleton className="size-16 shrink-0 rounded-md" />
+                <div className="flex flex-1 flex-col justify-center gap-1">
+                  <Skeleton className="h-4 w-3/4 rounded" />
+                  <Skeleton className="h-3 w-1/2 rounded" />
                 </div>
-              ))
-            : results.map((game) => (
-                <div
-                  key={game.id}
-                  className="w-[85vw] max-w-sm shrink-0"
-                  style={{ scrollSnapAlign: "center" }}
-                >
-                  <GameCard game={game} />
-                </div>
-              ))}
-        </div>
+              </div>
+            ))
+          : results.map((game) => <GameCard key={game.id} game={game} variant="compact" />)}
       </div>
     </section>
   );

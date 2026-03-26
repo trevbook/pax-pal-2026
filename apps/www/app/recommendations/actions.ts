@@ -6,7 +6,7 @@ import { getVectors, queryVectors } from "@/lib/vectors";
 
 const MAX_INPUT = 50;
 const QUERY_TOP_K = 20;
-const RETURN_LIMIT = 6;
+const RETURN_LIMIT = 5;
 
 export async function getRecommendations(gameIds: string[]): Promise<GameCardData[]> {
   try {
