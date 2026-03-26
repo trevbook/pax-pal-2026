@@ -35,3 +35,8 @@ export const reviewsTable = new sst.aws.Dynamo("Reviews", {
     byUser: { hashKey: "username", rangeKey: "createdAt" },
   },
 });
+
+export const profilesTable = new sst.aws.Dynamo("Profiles", {
+  fields: { pk: "string" },
+  primaryIndex: { hashKey: "pk" },
+});

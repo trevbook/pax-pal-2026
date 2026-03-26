@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { BottomNav } from "@/components/bottom-nav";
+import { ProfileSyncProvider } from "@/components/profile-sync-provider";
 import { ThemeProvider } from "@/components/theme-provider";
 import { TopHeader } from "@/components/top-header";
 import { Toaster } from "@/components/ui/sonner";
@@ -48,6 +49,7 @@ export default function RootLayout({
             {children}
           </main>
           <BottomNav />
+          <ProfileSyncProvider />
           <Toaster />
         </ThemeProvider>
       </body>

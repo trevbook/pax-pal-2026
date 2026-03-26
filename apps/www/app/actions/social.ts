@@ -2,6 +2,7 @@
 
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
+  DeleteCommand,
   DynamoDBDocumentClient,
   GetCommand,
   PutCommand,
@@ -24,6 +25,7 @@ const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
 
 const usersTable = (Resource as unknown as Record<string, { name: string }>).Users.name;
 const reviewsTable = (Resource as unknown as Record<string, { name: string }>).Reviews.name;
+const profilesTable = (Resource as unknown as Record<string, { name: string }>).Profiles.name;
 
 // ---------------------------------------------------------------------------
 // Username actions
@@ -249,4 +251,152 @@ export async function getReviewsForGame(gameSlug: string): Promise<GameReview[]>
       createdAt: item.createdAt as string,
     }))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+// ---------------------------------------------------------------------------
+// Profile data sync
+// ---------------------------------------------------------------------------
+
+export interface ProfileGameEntry {
+  name: string;
+  slug: string;
+  imageUrl: string | null;
+  boothId: string | null;
+  type: string;
+  exhibitor: string;
+}
+
+export interface ProfileWatchlistEntry extends ProfileGameEntry {
+  addedAt: string;
+}
+
+export interface ProfilePlayedEntry extends ProfileGameEntry {
+  playedAt: string;
+  rating: number | null;
+  comment: string | null;
+}
+
+export interface ProfileData {
+  username: string;
+  watchlist: Record<string, ProfileWatchlistEntry>;
+  played: Record<string, ProfilePlayedEntry>;
+  updatedAt: string;
+}
+
+export async function syncProfileData(input: {
+  username: string;
+  secretToken: string;
+  watchlist: Record<string, ProfileWatchlistEntry>;
+  played: Record<string, ProfilePlayedEntry>;
+}): Promise<{ success: boolean }> {
+  // Verify token
+  const userResult = await ddb.send(
+    new GetCommand({
+      TableName: usersTable,
+      Key: { pk: `USER#${input.username}` },
+    }),
+  );
+
+  if (!userResult.Item || userResult.Item.secretToken !== input.secretToken) {
+    return { success: false };
+  }
+
+  await ddb.send(
+    new PutCommand({
+      TableName: profilesTable,
+      Item: {
+        pk: `PROFILE#${input.username}`,
+        username: input.username,
+        watchlist: input.watchlist,
+        played: input.played,
+        updatedAt: new Date().toISOString(),
+      },
+    }),
+  );
+
+  return { success: true };
+}
+
+export async function getProfileData(username: string): Promise<ProfileData | null> {
+  const result = await ddb.send(
+    new GetCommand({
+      TableName: profilesTable,
+      Key: { pk: `PROFILE#${username}` },
+    }),
+  );
+
+  if (!result.Item) return null;
+
+  return {
+    username: result.Item.username as string,
+    watchlist: (result.Item.watchlist as Record<string, ProfileWatchlistEntry>) ?? {},
+    played: (result.Item.played as Record<string, ProfilePlayedEntry>) ?? {},
+    updatedAt: result.Item.updatedAt as string,
+  };
+}
+
+export interface UserReview {
+  gameSlug: string;
+  gameName: string;
+  username: string;
+  rating: number;
+  comment: string;
+  createdAt: string;
+}
+
+export async function getReviewsByUser(username: string): Promise<UserReview[]> {
+  const result = await ddb.send(
+    new QueryCommand({
+      TableName: reviewsTable,
+      IndexName: "byUser",
+      KeyConditionExpression: "username = :u",
+      ExpressionAttributeValues: { ":u": username },
+      ScanIndexForward: false,
+    }),
+  );
+
+  if (!result.Items) return [];
+
+  return result.Items.filter((item) => item.comment).map((item) => ({
+    gameSlug: item.gameSlug as string,
+    gameName: item.gameName as string,
+    username: item.username as string,
+    rating: item.rating as number,
+    comment: item.comment as string,
+    createdAt: item.createdAt as string,
+  }));
+}
+
+// ---------------------------------------------------------------------------
+// Delete review
+// ---------------------------------------------------------------------------
+
+export async function deleteReview(input: {
+  gameSlug: string;
+  username: string;
+  secretToken: string;
+}): Promise<{ success: boolean; message?: string }> {
+  // Verify token
+  const userResult = await ddb.send(
+    new GetCommand({
+      TableName: usersTable,
+      Key: { pk: `USER#${input.username}` },
+    }),
+  );
+
+  if (!userResult.Item || userResult.Item.secretToken !== input.secretToken) {
+    return { success: false, message: "Invalid credentials." };
+  }
+
+  await ddb.send(
+    new DeleteCommand({
+      TableName: reviewsTable,
+      Key: {
+        pk: `GAME#${input.gameSlug}`,
+        sk: `REVIEW#${input.username}`,
+      },
+    }),
+  );
+
+  return { success: true };
 }

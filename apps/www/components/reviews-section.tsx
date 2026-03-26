@@ -1,4 +1,5 @@
 import { MessageCircle, Star } from "lucide-react";
+import Link from "next/link";
 import type { GameReview } from "@/app/actions/social";
 
 interface ReviewsSectionProps {
@@ -42,7 +43,12 @@ export function ReviewsSection({ reviews }: ReviewsSectionProps) {
               className="rounded-lg border border-border p-3"
             >
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">{review.username}</span>
+                <Link
+                  href={`/profile/${review.username}`}
+                  className="text-sm font-medium hover:underline"
+                >
+                  {review.username}
+                </Link>
                 <span className="text-xs text-muted-foreground">{timeAgo(review.createdAt)}</span>
               </div>
               <div className="mt-1 flex items-center gap-0.5">

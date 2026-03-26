@@ -1,9 +1,11 @@
 "use client";
 
-import { Check, Copy, Heart, Share2, Star, X } from "lucide-react";
+import { Check, Heart, Link2, Star, User, X } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { toast } from "sonner";
+import { deleteReview, getReviewsByUser, syncProfileData } from "@/app/actions/social";
 import {
   removeFromPlayed,
   removeFromWatchlist,
@@ -17,6 +19,16 @@ import type { PlayedEntry, TrackedGameData, WatchlistEntry } from "@/lib/trackin
 import { cn } from "@/lib/utils";
 import { GameImage } from "./game-image";
 import { TypeBadge } from "./type-badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "./ui/alert-dialog";
 import { Button } from "./ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { UsernameModal } from "./username-modal";
@@ -32,6 +44,7 @@ interface GameEntry extends TrackedGameData {
   id: string;
   addedAt: string;
   rating?: number | null;
+  comment?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -51,6 +64,7 @@ function playedToEntries(played: Record<string, PlayedEntry>): GameEntry[] {
     ...entry,
     addedAt: entry.playedAt,
     rating: entry.rating,
+    comment: entry.comment,
   }));
 }
 
@@ -135,13 +149,19 @@ function GameRow({
   tab,
   onRemove,
   onSetRating,
+  hasPublicReview,
+  onReviewDeleted,
 }: {
   entry: GameEntry;
   tab: Tab;
   onRemove: () => void;
   onSetRating?: (rating: number | null) => void;
+  hasPublicReview?: boolean;
+  onReviewDeleted?: (slug: string) => void;
 }) {
   const booth = formatBoothDisplay(entry.boothId);
+  const { user } = useUser();
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   return (
     <div className="group flex items-center gap-2">
@@ -198,18 +218,71 @@ function GameRow({
               ))}
             </div>
           )}
+          {/* Comment preview on played tab */}
+          {tab === "played" && entry.comment && (
+            <p className="mt-0.5 line-clamp-2 text-xs leading-snug text-muted-foreground italic">
+              &ldquo;{entry.comment}&rdquo;
+            </p>
+          )}
         </div>
       </Link>
 
       {/* Remove button */}
       <button
         type="button"
-        onClick={onRemove}
+        onClick={() => setConfirmOpen(true)}
         className="shrink-0 rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
         aria-label={`Remove ${entry.name} from ${tab}`}
       >
         <X className="size-4" />
       </button>
+
+      {/* Confirmation dialog */}
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove from {tab}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {tab === "played" && hasPublicReview ? (
+                <>
+                  This will also <span className="font-medium">delete your public review</span> for{" "}
+                  <span className="font-medium">{entry.name}</span>.
+                </>
+              ) : (
+                <>
+                  Are you sure you want to remove <span className="font-medium">{entry.name}</span>{" "}
+                  from your {tab}?
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={async () => {
+                if (tab === "played" && hasPublicReview && user) {
+                  const result = await deleteReview({
+                    gameSlug: entry.slug,
+                    username: user.username,
+                    secretToken: user.secretToken,
+                  });
+                  if (!result.success) {
+                    toast.error(result.message ?? "Failed to delete review");
+                    setConfirmOpen(false);
+                    return;
+                  }
+                  onReviewDeleted?.(entry.slug);
+                }
+                onRemove();
+                setConfirmOpen(false);
+              }}
+            >
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -218,43 +291,6 @@ function GameRow({
 // Share / Export
 // ---------------------------------------------------------------------------
 
-function generateShareText(
-  watchlist: Record<string, WatchlistEntry>,
-  played: Record<string, PlayedEntry>,
-): string {
-  const playedEntries = Object.values(played);
-  const playedIds = new Set(Object.keys(played));
-
-  const rated = playedEntries
-    .filter((e) => e.rating != null)
-    .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
-
-  const missedNames = Object.entries(watchlist)
-    .filter(([id]) => !playedIds.has(id))
-    .map(([, e]) => e.name);
-
-  const lines = ["My PAX East 2026 Recap (via PAX Pal)"];
-  lines.push(
-    `Played ${playedEntries.length} game${playedEntries.length !== 1 ? "s" : ""}, rated ${rated.length}`,
-  );
-
-  if (rated.length > 0) {
-    const topRated = rated
-      .slice(0, 3)
-      .map((e) => `${e.name} (${"★".repeat(e.rating ?? 0)})`)
-      .join(", ");
-    lines.push(`Top rated: ${topRated}`);
-  }
-
-  if (missedNames.length > 0) {
-    const missedStr = missedNames.slice(0, 4).join(", ");
-    const suffix = missedNames.length > 4 ? `, +${missedNames.length - 4} more` : "";
-    lines.push(`Watchlisted but missed: ${missedStr}${suffix}`);
-  }
-
-  return lines.join("\n");
-}
-
 function ShareButton({
   watchlist,
   played,
@@ -262,44 +298,93 @@ function ShareButton({
   watchlist: Record<string, WatchlistEntry>;
   played: Record<string, PlayedEntry>;
 }) {
-  const [copied, setCopied] = useState(false);
+  const { user } = useUser();
+  const [showUsernameModal, setShowUsernameModal] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
-  const handleShare = async () => {
-    const text = generateShareText(watchlist, played);
+  const handleShareProfile = useCallback(async () => {
+    if (!user) return;
 
-    if (typeof navigator !== "undefined" && "share" in navigator) {
+    // Trigger an immediate sync before sharing
+    setSyncing(true);
+    try {
+      await syncProfileData({
+        username: user.username,
+        secretToken: user.secretToken,
+        watchlist,
+        played,
+      });
+    } catch {
+      // Best-effort sync
+    }
+    setSyncing(false);
+
+    // Build a shareable URL — use production domain when not on localhost
+    const origin =
+      window.location.hostname === "localhost"
+        ? window.location.origin
+        : "https://pax-pal-2026.trevbook.com";
+    const shareUrl = `${origin}/profile/${user.username}`;
+
+    // Try native share dialog first (secure contexts only), fall back to clipboard
+    if (window.isSecureContext && "share" in navigator) {
       try {
-        await navigator.share({ text });
+        await navigator.share({
+          title: `${user.username}'s PAX Pal Profile`,
+          url: shareUrl,
+        });
         return;
       } catch {
         // User cancelled or API not available — fall through to clipboard
       }
     }
 
-    // Clipboard fallback
+    // clipboard.writeText requires a secure context — use execCommand fallback for plain HTTP
     try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      await navigator.clipboard.writeText(shareUrl);
+      toast.success("Profile link copied to clipboard!");
     } catch {
-      // Last resort
+      try {
+        const textarea = document.createElement("textarea");
+        textarea.value = shareUrl;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+        toast.success("Profile link copied to clipboard!");
+      } catch {
+        toast.error("Unable to copy link");
+      }
     }
-  };
+  }, [user, watchlist, played]);
 
+  // User is logged in — share profile link
+  if (user) {
+    return (
+      <Button variant="default" className="w-full" onClick={handleShareProfile} disabled={syncing}>
+        {syncing ? (
+          <>Syncing...</>
+        ) : (
+          <>
+            <Link2 className="mr-2 size-4" />
+            Share Your Profile
+          </>
+        )}
+      </Button>
+    );
+  }
+
+  // User not logged in — prompt to create account
   return (
-    <Button variant="outline" className="w-full" onClick={handleShare}>
-      {copied ? (
-        <>
-          <Copy className="mr-2 size-4" />
-          Copied to clipboard!
-        </>
-      ) : (
-        <>
-          <Share2 className="mr-2 size-4" />
-          Share Your PAX Recap
-        </>
-      )}
-    </Button>
+    <>
+      <Button variant="default" className="w-full" onClick={() => setShowUsernameModal(true)}>
+        <User className="mr-2 size-4" />
+        Create Account to Share Profile
+      </Button>
+      <UsernameModal open={showUsernameModal} onOpenChange={setShowUsernameModal} />
+    </>
   );
 }
 
@@ -360,10 +445,22 @@ export function MyGames() {
   const [tab, setTab] = useState<Tab>("watchlist");
   const [sort, setSort] = useState<SortOption>("name");
   const [usernameModalOpen, setUsernameModalOpen] = useState(false);
+  const [reviewedSlugs, setReviewedSlugs] = useState<Set<string>>(new Set());
   const [bannerDismissed, setBannerDismissed] = useState(() => {
     if (typeof window === "undefined") return false;
     return localStorage.getItem("pax-pal-username-banner-dismissed") === "true";
   });
+
+  // Fetch user's public reviews to block removal of reviewed games
+  useEffect(() => {
+    if (!user) {
+      setReviewedSlugs(new Set());
+      return;
+    }
+    getReviewsByUser(user.username).then((reviews) => {
+      setReviewedSlugs(new Set(reviews.map((r) => r.gameSlug)));
+    });
+  }, [user]);
 
   // Derived data
   const watchlistEntries = useMemo(() => watchlistToEntries(data.watchlist), [data.watchlist]);
@@ -509,6 +606,14 @@ export function MyGames() {
                 tab === "watchlist" ? removeFromWatchlist(entry.id) : removeFromPlayed(entry.id)
               }
               onSetRating={tab === "played" ? (r) => setGameRating(entry.id, r) : undefined}
+              hasPublicReview={reviewedSlugs.has(entry.slug)}
+              onReviewDeleted={(slug) => {
+                setReviewedSlugs((prev) => {
+                  const next = new Set(prev);
+                  next.delete(slug);
+                  return next;
+                });
+              }}
             />
           ))
         )}
