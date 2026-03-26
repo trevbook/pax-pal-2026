@@ -2,55 +2,72 @@
 
 import { getAllActiveGames } from "@/lib/db";
 import type { GameCardData } from "@/lib/game-card-data";
-import { getVectors, queryVectors } from "@/lib/vectors";
 
-const MAX_INPUT = 50;
-const QUERY_TOP_K = 20;
 const RETURN_LIMIT = 5;
-const ORDER_TOP_K = 100;
+const PLAYED_MULTIPLIER = 1.5;
+const WATCHLIST_MULTIPLIER = 1.0;
 
-export async function getRecommendations(gameIds: string[]): Promise<GameCardData[]> {
-  try {
-    if (gameIds.length === 0) return [];
+interface TrackedGames {
+  played: string[];
+  watchlist: string[];
+}
 
-    // 1. Cap input to stay within S3 Vectors limits
-    const capped = gameIds.slice(0, MAX_INPUT);
+/**
+ * Score candidate games by weighted overlap of pre-computed similarity lists.
+ *
+ * For each tracked game, we walk its `similarGameIds` (top 10 neighbors).
+ * A neighbor at rank r (0-indexed) receives `(10 - r) * multiplier` points,
+ * where played games contribute 1.5x and watchlisted games contribute 1.0x.
+ *
+ * This avoids the "embedding averaging blob" problem — diverse tastes produce
+ * recommendations from each cluster rather than a muddled centroid.
+ */
+function scoreByOverlap(
+  tracked: TrackedGames,
+  gameById: Map<string, GameCardData>,
+): Map<string, number> {
+  const scores = new Map<string, number>();
+  const trackedSet = new Set([...tracked.played, ...tracked.watchlist]);
 
-    // 2. Fetch embeddings for tracked games
-    const embeddings = await getVectors(capped);
-    if (embeddings.size === 0) return [];
-
-    // 3. Average into a taste vector
-    const first = embeddings.values().next().value;
-    if (!first) return [];
-    const dim = first.length;
-    const avg = new Float32Array(dim);
-    for (const vec of embeddings.values()) {
-      for (let i = 0; i < dim; i++) {
-        avg[i] += vec[i];
+  function addScores(gameIds: string[], multiplier: number) {
+    for (const id of gameIds) {
+      const game = gameById.get(id);
+      if (!game) continue;
+      const neighbors = game.similarGameIds;
+      for (let r = 0; r < neighbors.length; r++) {
+        const neighborId = neighbors[r];
+        // Skip games the user already tracks
+        if (trackedSet.has(neighborId)) continue;
+        const weight = (neighbors.length - r) * multiplier;
+        scores.set(neighborId, (scores.get(neighborId) ?? 0) + weight);
       }
     }
-    const count = embeddings.size;
-    for (let i = 0; i < dim; i++) {
-      avg[i] /= count;
-    }
+  }
 
-    // 4. Query nearest neighbors
-    const vectorResults = await queryVectors(Array.from(avg), QUERY_TOP_K);
+  addScores(tracked.played, PLAYED_MULTIPLIER);
+  addScores(tracked.watchlist, WATCHLIST_MULTIPLIER);
 
-    // 5. Filter out already-tracked games
-    const inputSet = new Set(capped);
-    const filtered = vectorResults.filter((vr) => !inputSet.has(vr.key));
+  return scores;
+}
 
-    // 6. Hydrate from cache, deduplicate by slug, and return top results
+export async function getRecommendations(tracked: TrackedGames): Promise<GameCardData[]> {
+  try {
+    if (tracked.played.length === 0 && tracked.watchlist.length === 0) return [];
+
     const allGames = await getAllActiveGames();
     const gameById = new Map(allGames.map((g) => [g.id, g]));
 
+    const scores = scoreByOverlap(tracked, gameById);
+
+    // Sort by score descending
+    const ranked = [...scores.entries()].sort((a, b) => b[1] - a[1]);
+
+    // Deduplicate by slug, return top results
     const results: GameCardData[] = [];
     const seenSlugs = new Set<string>();
-    for (const vr of filtered) {
+    for (const [id] of ranked) {
       if (results.length >= RETURN_LIMIT) break;
-      const game = gameById.get(vr.key);
+      const game = gameById.get(id);
       if (!game) continue;
       if (seenSlugs.has(game.slug)) continue;
       seenSlugs.add(game.slug);
@@ -65,40 +82,19 @@ export async function getRecommendations(gameIds: string[]): Promise<GameCardDat
 }
 
 /**
- * Returns an ordered list of game IDs ranked by similarity to the user's taste vector.
+ * Returns an ordered list of game IDs ranked by overlap scoring.
  * Used by the "Sort by Recommended" option in the game catalogue.
- * Games not in the watchlist are ranked; watchlist games are excluded from results.
  */
-export async function getRecommendedOrder(gameIds: string[]): Promise<string[]> {
+export async function getRecommendedOrder(tracked: TrackedGames): Promise<string[]> {
   try {
-    if (gameIds.length === 0) return [];
+    if (tracked.played.length === 0 && tracked.watchlist.length === 0) return [];
 
-    const capped = gameIds.slice(0, MAX_INPUT);
+    const allGames = await getAllActiveGames();
+    const gameById = new Map(allGames.map((g) => [g.id, g]));
 
-    const embeddings = await getVectors(capped);
-    if (embeddings.size === 0) return [];
+    const scores = scoreByOverlap(tracked, gameById);
 
-    // Average into a taste vector
-    const first = embeddings.values().next().value;
-    if (!first) return [];
-    const dim = first.length;
-    const avg = new Float32Array(dim);
-    for (const vec of embeddings.values()) {
-      for (let i = 0; i < dim; i++) {
-        avg[i] += vec[i];
-      }
-    }
-    const count = embeddings.size;
-    for (let i = 0; i < dim; i++) {
-      avg[i] /= count;
-    }
-
-    // Query a large neighborhood to rank as many games as possible
-    const vectorResults = await queryVectors(Array.from(avg), ORDER_TOP_K);
-
-    // Filter out tracked games, return ordered IDs
-    const inputSet = new Set(capped);
-    return vectorResults.filter((vr) => !inputSet.has(vr.key)).map((vr) => vr.key);
+    return [...scores.entries()].sort((a, b) => b[1] - a[1]).map(([id]) => id);
   } catch (err) {
     console.error("Recommended order failed:", err);
     return [];

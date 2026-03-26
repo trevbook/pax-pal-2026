@@ -118,6 +118,18 @@ export function ChatPage() {
     if (el) el.scrollTop = el.scrollHeight;
   }, [messageCount, status]);
 
+  // Re-scroll when the mobile keyboard opens/closes (viewport resize)
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const onResize = () => {
+      const el = scrollRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
+    };
+    vv.addEventListener("resize", onResize);
+    return () => vv.removeEventListener("resize", onResize);
+  }, []);
+
   // Persist chat when assistant finishes responding
   useEffect(() => {
     const wasStreaming =

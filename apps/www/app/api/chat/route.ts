@@ -14,8 +14,10 @@ export async function POST(req: Request) {
     playedIds,
   }: { messages: UIMessage[]; watchlistIds: string[]; playedIds: string[] } = await req.json();
 
-  // Combine watchlist + played for taste vector (deduplicated)
-  const allTrackedIds = [...new Set([...(watchlistIds ?? []), ...(playedIds ?? [])])];
+  const tracked = {
+    played: playedIds ?? [],
+    watchlist: watchlistIds ?? [],
+  };
 
   // Define analyzeTaste inline so it can close over tracked IDs
   const analyzeTaste = tool({
@@ -23,14 +25,14 @@ export async function POST(req: Request) {
       "Analyze the user's tracked games (watchlist + played) and recommend similar games they haven't seen yet. Use this when the user asks for personalized recommendations, 'what should I play?', or anything about their taste/preferences.",
     inputSchema: z.object({}),
     execute: async () => {
-      if (allTrackedIds.length === 0) {
+      if (tracked.played.length === 0 && tracked.watchlist.length === 0) {
         return {
           error:
             "You haven't tracked any games yet — add some to your watchlist or mark some as played, then I can give you personalized recs!",
           games: [],
         };
       }
-      const recs = await getRecommendations(allTrackedIds);
+      const recs = await getRecommendations(tracked);
       return { games: recs };
     },
   });

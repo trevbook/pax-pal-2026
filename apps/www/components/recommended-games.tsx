@@ -36,22 +36,25 @@ export function RecommendedGames() {
   const [hasFetched, setHasFetched] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Combine and deduplicate watchlist + played IDs — sorted for stable identity
-  const uniqueIds = useMemo(() => {
-    const ids = new Set([...Object.keys(tracking.watchlist), ...Object.keys(tracking.played)]);
-    return [...ids].sort();
-  }, [tracking.watchlist, tracking.played]);
+  // Separate played and watchlist IDs for weighted scoring
+  const playedIds = useMemo(() => Object.keys(tracking.played).sort(), [tracking.played]);
+  const watchlistIds = useMemo(() => Object.keys(tracking.watchlist).sort(), [tracking.watchlist]);
 
-  const idsKey = uniqueIds.join(",");
+  // Combined key for cache identity
+  const idsKey = useMemo(
+    () => `p:${playedIds.join(",")};w:${watchlistIds.join(",")}`,
+    [playedIds, watchlistIds],
+  );
+  const hasTracked = playedIds.length > 0 || watchlistIds.length > 0;
 
   useEffect(() => {
-    if (uniqueIds.length === 0) {
+    if (!hasTracked) {
       setResults([]);
       setHasFetched(false);
       return;
     }
 
-    // Use cached results if the watchlist hasn't changed
+    // Use cached results if the tracked games haven't changed
     const cached = readCache(idsKey);
     if (cached) {
       setResults(cached);
@@ -64,7 +67,7 @@ export function RecommendedGames() {
     debounceRef.current = setTimeout(async () => {
       setLoading(true);
       try {
-        const recs = await getRecommendations(uniqueIds);
+        const recs = await getRecommendations({ played: playedIds, watchlist: watchlistIds });
         setResults(recs);
         writeCache(idsKey, recs);
       } catch {
@@ -78,10 +81,10 @@ export function RecommendedGames() {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [idsKey, uniqueIds]);
+  }, [idsKey, hasTracked, playedIds, watchlistIds]);
 
   // Don't render when there's nothing to show
-  if (uniqueIds.length === 0) return null;
+  if (!hasTracked) return null;
   if (hasFetched && !loading && results.length === 0) return null;
 
   return (

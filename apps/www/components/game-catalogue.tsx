@@ -168,27 +168,29 @@ export function GameCatalogue({ games }: { games: GameCardData[] }) {
 
   // Recommended sort state
   const tracking = useTrackingList();
-  const trackedIds = useMemo(() => {
-    const ids = new Set([...Object.keys(tracking.watchlist), ...Object.keys(tracking.played)]);
-    return [...ids].sort();
-  }, [tracking.watchlist, tracking.played]);
-  const hasTracked = trackedIds.length > 0;
+  const playedIds = useMemo(() => Object.keys(tracking.played).sort(), [tracking.played]);
+  const watchlistIds = useMemo(() => Object.keys(tracking.watchlist).sort(), [tracking.watchlist]);
+  const hasTracked = playedIds.length > 0 || watchlistIds.length > 0;
 
   const [recommendedRank, setRecommendedRank] = useState<Map<string, number>>(new Map());
   const [recommendedLoading, setRecommendedLoading] = useState(false);
   const fetchedForRef = useRef<string>("");
 
   // Fetch recommended order when sort changes to "recommended"
+  const idsKey = useMemo(
+    () => `p:${playedIds.join(",")};w:${watchlistIds.join(",")}`,
+    [playedIds, watchlistIds],
+  );
+
   useEffect(() => {
     if (sort !== "recommended" || !hasTracked) return;
 
-    const idsKey = trackedIds.join(",");
     if (fetchedForRef.current === idsKey && recommendedRank.size > 0) return;
 
     let cancelled = false;
     setRecommendedLoading(true);
 
-    getRecommendedOrder(trackedIds).then((orderedIds) => {
+    getRecommendedOrder({ played: playedIds, watchlist: watchlistIds }).then((orderedIds) => {
       if (cancelled) return;
       const rank = new Map<string, number>();
       for (let i = 0; i < orderedIds.length; i++) {
@@ -202,7 +204,7 @@ export function GameCatalogue({ games }: { games: GameCardData[] }) {
     return () => {
       cancelled = true;
     };
-  }, [sort, trackedIds, hasTracked, recommendedRank.size]);
+  }, [sort, idsKey, hasTracked, playedIds, watchlistIds, recommendedRank.size]);
 
   // Tab switch: reset chip filters and pagination, preserve search text (per spec)
   const handleTabChange = useCallback(
