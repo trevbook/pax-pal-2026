@@ -1,11 +1,8 @@
 name: CI
 
-# Triggered manually only. To run CI automatically, change this to:
-#   pull_request:
-#     branches: [main]
-#   push:
-#     branches: [main]
 on:
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
