@@ -1,8 +1,8 @@
 "use client";
 
 import type { GameType } from "@pax-pal/core";
-import { useCallback, useState } from "react";
-import type { GameReview } from "@/app/actions/social";
+import { useCallback, useEffect, useState } from "react";
+import { type GameReview, getReviewsForGame } from "@/app/actions/social";
 import { useTracking } from "@/hooks/use-tracking";
 import { ActionBar } from "./action-bar";
 import { PlayedModal } from "./played-modal";
@@ -28,6 +28,15 @@ export function GameDetailClient({ game, initialReviews }: GameDetailClientProps
   const [reportOpen, setReportOpen] = useState(false);
   const [playedModalOpen, setPlayedModalOpen] = useState(false);
   const [reviews, setReviews] = useState<GameReview[]>(initialReviews);
+
+  // Hydrate with fresh reviews — static pages bake in build-time data
+  useEffect(() => {
+    getReviewsForGame(game.slug).then((fresh) => {
+      if (fresh.length > 0 || initialReviews.length > 0) {
+        setReviews(fresh);
+      }
+    });
+  }, [game.slug, initialReviews.length]);
 
   const handleMarkPlayed = useCallback(
     (rating: number | null, comment: string | null) => {
