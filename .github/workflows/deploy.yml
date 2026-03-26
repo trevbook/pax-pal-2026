@@ -31,6 +31,6 @@ jobs:
       - name: Install deps
         run: bun install --frozen-lockfile
       - name: Install SST platform deps
-        run: bunx sst install
+        run: bunx sst install --print-logs
       - name: Deploy
         run: bunx sst deploy --stage production --print-logs
