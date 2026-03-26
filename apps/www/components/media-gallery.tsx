@@ -1,8 +1,9 @@
 "use client";
 
+import Hls from "hls.js";
 import { ArrowLeft, ArrowRight, Play, X } from "lucide-react";
 import Image from "next/image";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Carousel,
@@ -13,31 +14,62 @@ import {
   CarouselPrevious,
 } from "@/components/ui/carousel";
 
-/** Determine if a URL points to a video (YouTube, Steam movie, etc.) */
+/** Check if a URL is a YouTube link */
+function isYouTubeUrl(url: string): boolean {
+  return url.includes("youtube.com") || url.includes("youtu.be");
+}
+
+/** Determine if a URL points to a video (Steam movie, etc.) */
 function isVideoUrl(url: string): boolean {
   return (
-    url.includes("youtube.com") ||
-    url.includes("youtu.be") ||
     url.includes(".mp4") ||
     url.includes(".webm") ||
+    url.includes(".m3u8") || // HLS playlist (Steam)
     url.includes("/movie/") // Steam movie CDN pattern
   );
 }
 
-/** Convert a YouTube URL to an embed URL */
-function toYouTubeEmbed(url: string): string | null {
-  let videoId: string | null = null;
-  try {
-    const u = new URL(url);
-    if (u.hostname === "youtu.be") {
-      videoId = u.pathname.slice(1);
-    } else if (u.hostname.includes("youtube.com")) {
-      videoId = u.searchParams.get("v");
-    }
-  } catch {
-    return null;
+/** Filter out YouTube URLs and sort so images come first, videos last */
+function filterAndSort(urls: string[]): string[] {
+  const images: string[] = [];
+  const videos: string[] = [];
+  for (const url of urls) {
+    if (isYouTubeUrl(url)) continue;
+    if (isVideoUrl(url)) videos.push(url);
+    else images.push(url);
   }
-  return videoId ? `https://www.youtube-nocookie.com/embed/${videoId}` : null;
+  return [...images, ...videos];
+}
+
+// ---------------------------------------------------------------------------
+// HLS Video Player
+// ---------------------------------------------------------------------------
+
+function HlsVideo({ src, className }: { src: string; className?: string }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    // Safari supports HLS natively
+    if (video.canPlayType("application/vnd.apple.mpegurl")) {
+      video.src = src;
+      return;
+    }
+
+    if (Hls.isSupported()) {
+      const hls = new Hls();
+      hls.loadSource(src);
+      hls.attachMedia(video);
+      return () => hls.destroy();
+    }
+  }, [src]);
+
+  return (
+    // biome-ignore lint/a11y/useMediaCaption: game trailer without captions
+    <video ref={videoRef} controls preload="metadata" className={className} />
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -170,17 +202,9 @@ function Lightbox({
 }
 
 function LightboxVideo({ url }: { url: string }) {
-  const embed = toYouTubeEmbed(url);
-  if (embed) {
-    return (
-      <iframe
-        src={embed}
-        title="Game trailer"
-        className="aspect-video w-full max-w-3xl rounded-lg"
-        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-        allowFullScreen
-      />
-    );
+  // HLS stream
+  if (url.includes(".m3u8")) {
+    return <HlsVideo src={url} className="max-h-[85vh] w-auto max-w-full rounded-lg" />;
   }
   // Direct video file
   return (
@@ -202,12 +226,15 @@ function Thumbnail({
   url,
   index,
   onClick,
+  thumbnailUrl,
 }: {
   url: string;
   index: number;
   onClick: (index: number) => void;
+  thumbnailUrl?: string;
 }) {
   const video = isVideoUrl(url);
+  const thumb = thumbnailUrl ?? null;
 
   return (
     <button
@@ -217,8 +244,19 @@ function Thumbnail({
       aria-label={video ? `Play video ${index + 1}` : `View image ${index + 1}`}
     >
       {video ? (
-        <div className="flex aspect-video items-center justify-center bg-muted">
-          <Play className="size-8 text-muted-foreground" />
+        <div className="relative flex aspect-video items-center justify-center bg-muted">
+          {thumb && (
+            // biome-ignore lint/performance/noImgElement: lightweight thumbnail
+            <img
+              src={thumb}
+              alt=""
+              className="absolute inset-0 size-full object-cover"
+              loading="lazy"
+            />
+          )}
+          <div className="relative flex size-10 items-center justify-center rounded-full bg-black/60">
+            <Play className="size-5 text-white" fill="white" />
+          </div>
         </div>
       ) : (
         <div className="relative aspect-video">
@@ -240,7 +278,18 @@ function Thumbnail({
 // MediaGallery (exported)
 // ---------------------------------------------------------------------------
 
-export function MediaGallery({ urls }: { urls: string[] }) {
+/**
+ * @param urls — Array of media URLs (images + videos).
+ * @param videoThumbnails — Optional map of video URL → thumbnail image URL.
+ */
+export function MediaGallery({
+  urls: rawUrls,
+  videoThumbnails,
+}: {
+  urls: string[];
+  videoThumbnails?: Record<string, string>;
+}) {
+  const urls = useMemo(() => filterAndSort(rawUrls), [rawUrls]);
   const [lightbox, setLightbox] = useState<{ index: number } | null>(null);
   const [api, setApi] = useState<CarouselApi>();
   const [current, setCurrent] = useState(1);
@@ -271,7 +320,12 @@ export function MediaGallery({ urls }: { urls: string[] }) {
           <CarouselContent className="-ml-2">
             {urls.map((url, i) => (
               <CarouselItem key={url} className="basis-1/2 pl-2 sm:basis-1/3">
-                <Thumbnail url={url} index={i} onClick={openLightbox} />
+                <Thumbnail
+                  url={url}
+                  index={i}
+                  onClick={openLightbox}
+                  thumbnailUrl={videoThumbnails?.[url]}
+                />
               </CarouselItem>
             ))}
           </CarouselContent>
