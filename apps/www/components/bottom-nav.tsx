@@ -1,6 +1,6 @@
 "use client";
 
-import { Gamepad2, Home, MapIcon, Search, Star } from "lucide-react";
+import { Gamepad2, Home, MapIcon, MessageCircle, Star } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTrackingStats } from "@/hooks/use-tracking";
@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 const navItems = [
   { href: "/", label: "Home", icon: Home },
   { href: "/games", label: "Games", icon: Gamepad2 },
-  { href: "/search", label: "Search", icon: Search },
+  { href: "/chat", label: "PAX Pal", icon: MessageCircle },
   { href: "/map", label: "Map", icon: MapIcon },
   { href: "/my-games", label: "My Games", icon: Star },
 ] as const;

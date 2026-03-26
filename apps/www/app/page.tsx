@@ -1,4 +1,4 @@
-import { Gamepad2, MapIcon, Search, Star } from "lucide-react";
+import { Gamepad2, MapIcon, MessageCircle, Search, Star } from "lucide-react";
 import Link from "next/link";
 import { HomeProgress } from "@/components/home-progress";
 import { RecommendedGames } from "@/components/recommended-games";
@@ -6,7 +6,7 @@ import { getAllActiveGames } from "@/lib/db";
 
 const quickActions = [
   { href: "/games", label: "Games", icon: Gamepad2 },
-  { href: "/search", label: "Search", icon: Search },
+  { href: "/chat", label: "Ask PAX Pal", icon: MessageCircle },
   { href: "/map", label: "Map", icon: MapIcon },
   { href: "/my-games", label: "My Games", icon: Star },
 ];
