@@ -227,11 +227,13 @@ function Thumbnail({
   index,
   onClick,
   thumbnailUrl,
+  onError,
 }: {
   url: string;
   index: number;
   onClick: (index: number) => void;
   thumbnailUrl?: string;
+  onError?: (url: string) => void;
 }) {
   const video = isVideoUrl(url);
   const thumb = thumbnailUrl ?? null;
@@ -267,6 +269,7 @@ function Thumbnail({
             sizes="(max-width: 640px) 45vw, 200px"
             className="object-cover"
             loading="lazy"
+            onError={() => onError?.(url)}
           />
         </div>
       )}
@@ -289,10 +292,16 @@ export function MediaGallery({
   urls: string[];
   videoThumbnails?: Record<string, string>;
 }) {
-  const urls = useMemo(() => filterAndSort(rawUrls), [rawUrls]);
+  const sorted = useMemo(() => filterAndSort(rawUrls), [rawUrls]);
+  const [failedUrls, setFailedUrls] = useState<Set<string>>(() => new Set());
+  const urls = useMemo(() => sorted.filter((u) => !failedUrls.has(u)), [sorted, failedUrls]);
   const [lightbox, setLightbox] = useState<{ index: number } | null>(null);
   const [api, setApi] = useState<CarouselApi>();
   const [current, setCurrent] = useState(1);
+
+  const onImageError = useCallback((url: string) => {
+    setFailedUrls((prev) => new Set(prev).add(url));
+  }, []);
 
   useEffect(() => {
     if (!api) return;
@@ -325,6 +334,7 @@ export function MediaGallery({
                   index={i}
                   onClick={openLightbox}
                   thumbnailUrl={videoThumbnails?.[url]}
+                  onError={onImageError}
                 />
               </CarouselItem>
             ))}
