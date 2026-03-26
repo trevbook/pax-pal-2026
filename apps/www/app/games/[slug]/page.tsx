@@ -2,6 +2,7 @@ import { Clock, ExternalLink, Globe, MapPin, Monitor, Smartphone, Users, Zap } f
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { getReviewsForGame } from "@/app/actions/social";
 import { GameCard } from "@/components/game-card";
 import { GameDetailClient } from "@/components/game-detail-client";
 import { GameImage } from "@/components/game-image";
@@ -59,6 +60,9 @@ export default async function GameDetailPage({ params }: { params: Promise<{ slu
   // Fetch sibling games from same exhibitor (reuse getAllActiveGames to avoid extra scan)
   const allGames = await getAllActiveGames();
   const otherGames = allGames.filter((g) => g.exhibitorId === game.exhibitorId && g.id !== game.id);
+
+  // Fetch reviews for this game
+  const reviews = await getReviewsForGame(slug);
 
   // Resolve similar games from pre-computed IDs (exclude self + exhibitor siblings as safety net)
   const gameById = new Map(allGames.map((g) => [g.id, g]));
@@ -419,7 +423,8 @@ export default async function GameDetailPage({ params }: { params: Promise<{ slu
           </>
         )}
 
-        {/* Client interactive elements — action bar + report */}
+        {/* Client interactive elements — action bar + report + reviews */}
+        <Separator className="my-6" />
         <GameDetailClient
           game={{
             id: game.id,
@@ -431,6 +436,7 @@ export default async function GameDetailPage({ params }: { params: Promise<{ slu
             exhibitor: game.exhibitor,
           }}
           confirmed={confirmed}
+          initialReviews={reviews}
         />
       </div>
     </div>

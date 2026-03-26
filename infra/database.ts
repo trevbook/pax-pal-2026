@@ -19,3 +19,19 @@ export const exhibitorsTable = new sst.aws.Dynamo("Exhibitors", {
     byKind: { hashKey: "kind", rangeKey: "name" },
   },
 });
+
+export const usersTable = new sst.aws.Dynamo("Users", {
+  fields: { pk: "string", recoveryPhrase: "string" },
+  primaryIndex: { hashKey: "pk" },
+  globalIndexes: {
+    byRecovery: { hashKey: "recoveryPhrase" },
+  },
+});
+
+export const reviewsTable = new sst.aws.Dynamo("Reviews", {
+  fields: { pk: "string", sk: "string", username: "string", createdAt: "string" },
+  primaryIndex: { hashKey: "pk", rangeKey: "sk" },
+  globalIndexes: {
+    byUser: { hashKey: "username", rangeKey: "createdAt" },
+  },
+});

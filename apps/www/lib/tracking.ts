@@ -20,6 +20,7 @@ export interface WatchlistEntry extends TrackedGameData {
 export interface PlayedEntry extends TrackedGameData {
   playedAt: string; // ISO timestamp
   rating: number | null; // 1-5, null if not rated
+  comment: string | null; // review comment, null if not reviewed
 }
 
 export interface LocalTrackingData {

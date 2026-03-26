@@ -11,6 +11,8 @@ interface ActionBarProps {
   onToggleWatchlist: () => void;
   onTogglePlayed: () => void;
   onSetRating: (value: number | null) => void;
+  /** When provided, called instead of onTogglePlayed when marking as played (not when unmarking). */
+  onPlayedClick?: () => void;
 }
 
 export function ActionBar({
@@ -20,6 +22,7 @@ export function ActionBar({
   onToggleWatchlist,
   onTogglePlayed,
   onSetRating,
+  onPlayedClick,
 }: ActionBarProps) {
   return (
     <div className="fixed bottom-14 left-0 right-0 z-40 border-t border-border bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-sm">
@@ -39,7 +42,7 @@ export function ActionBar({
         <Button
           variant={isPlayed ? "default" : "outline"}
           size="sm"
-          onClick={onTogglePlayed}
+          onClick={!isPlayed && onPlayedClick ? onPlayedClick : onTogglePlayed}
           className="flex-1"
         >
           <Check className={cn("mr-1.5 size-4", isPlayed && "stroke-[3]")} />

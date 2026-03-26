@@ -10,6 +10,7 @@ import {
   setGameRating,
   useTrackingList,
 } from "@/hooks/use-tracking";
+import { useUser } from "@/hooks/use-user";
 import { formatBoothDisplay } from "@/lib/format-booth";
 import { compareBoothId } from "@/lib/sort-booth";
 import type { PlayedEntry, TrackedGameData, WatchlistEntry } from "@/lib/tracking";
@@ -18,6 +19,7 @@ import { GameImage } from "./game-image";
 import { TypeBadge } from "./type-badge";
 import { Button } from "./ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { UsernameModal } from "./username-modal";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -354,8 +356,14 @@ function TabEmptyState({ tab }: { tab: Tab }) {
 
 export function MyGames() {
   const data = useTrackingList();
+  const { user } = useUser();
   const [tab, setTab] = useState<Tab>("watchlist");
   const [sort, setSort] = useState<SortOption>("name");
+  const [usernameModalOpen, setUsernameModalOpen] = useState(false);
+  const [bannerDismissed, setBannerDismissed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem("pax-pal-username-banner-dismissed") === "true";
+  });
 
   // Derived data
   const watchlistEntries = useMemo(() => watchlistToEntries(data.watchlist), [data.watchlist]);
@@ -397,6 +405,38 @@ export function MyGames() {
   return (
     <div className="p-4">
       <h1 className="mb-4 text-2xl font-bold">My Games</h1>
+
+      {/* Social banner — only when not signed in and has played games */}
+      {!user && playedCount > 0 && !bannerDismissed && (
+        <div className="mb-4 rounded-lg border border-dashed border-primary/40 bg-primary/5 px-4 py-3">
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-sm">
+              <span className="font-medium">Share your PAX journey</span> &mdash;{" "}
+              <button
+                type="button"
+                onClick={() => setUsernameModalOpen(true)}
+                className="font-medium text-primary underline-offset-4 hover:underline"
+              >
+                claim a username
+              </button>{" "}
+              to make your reviews public.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setBannerDismissed(true);
+                localStorage.setItem("pax-pal-username-banner-dismissed", "true");
+              }}
+              className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground"
+              aria-label="Dismiss"
+            >
+              <X className="size-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      <UsernameModal open={usernameModalOpen} onOpenChange={setUsernameModalOpen} />
 
       {/* Progress section */}
       <ProgressSection

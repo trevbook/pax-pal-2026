@@ -2,10 +2,13 @@
 
 import type { GameType } from "@pax-pal/core";
 import { AlertTriangle } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useState } from "react";
+import type { GameReview } from "@/app/actions/social";
 import { useTracking } from "@/hooks/use-tracking";
 import { ActionBar } from "./action-bar";
+import { PlayedModal } from "./played-modal";
 import { ReportModal } from "./report-modal";
+import { ReviewsSection } from "./reviews-section";
 
 interface GameDetailClientProps {
   game: {
@@ -18,12 +21,30 @@ interface GameDetailClientProps {
     exhibitor: string;
   };
   confirmed: boolean;
+  initialReviews: GameReview[];
 }
 
-/** Client wrapper that provides tracking state + action bar + report modal. */
-export function GameDetailClient({ game, confirmed }: GameDetailClientProps) {
+/** Client wrapper that provides tracking state + action bar + played/report modals + reviews. */
+export function GameDetailClient({ game, confirmed, initialReviews }: GameDetailClientProps) {
   const tracking = useTracking(game);
   const [reportOpen, setReportOpen] = useState(false);
+  const [playedModalOpen, setPlayedModalOpen] = useState(false);
+  const [reviews, setReviews] = useState<GameReview[]>(initialReviews);
+
+  const handleMarkPlayed = useCallback(
+    (rating: number | null, comment: string | null) => {
+      tracking.markPlayedWithReview(rating, comment);
+    },
+    [tracking.markPlayedWithReview],
+  );
+
+  const handleReviewPublished = useCallback((review: GameReview) => {
+    setReviews((prev) => {
+      // Replace existing review by same user, or prepend
+      const filtered = prev.filter((r) => r.username !== review.username);
+      return [review, ...filtered];
+    });
+  }, []);
 
   return (
     <>
@@ -48,6 +69,9 @@ export function GameDetailClient({ game, confirmed }: GameDetailClientProps) {
         </div>
       )}
 
+      {/* Community reviews */}
+      <ReviewsSection reviews={reviews} />
+
       {/* Sticky action bar above bottom nav */}
       <ActionBar
         isWatchlisted={tracking.isWatchlisted}
@@ -56,6 +80,16 @@ export function GameDetailClient({ game, confirmed }: GameDetailClientProps) {
         onToggleWatchlist={tracking.toggleWatchlist}
         onTogglePlayed={tracking.togglePlayed}
         onSetRating={tracking.setRating}
+        onPlayedClick={() => setPlayedModalOpen(true)}
+      />
+
+      {/* Played + review modal */}
+      <PlayedModal
+        open={playedModalOpen}
+        onOpenChange={setPlayedModalOpen}
+        game={game}
+        onMarkPlayed={handleMarkPlayed}
+        onReviewPublished={handleReviewPublished}
       />
 
       {/* Report section — at the bottom of the page content */}

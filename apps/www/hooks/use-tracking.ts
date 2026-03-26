@@ -79,6 +79,7 @@ export function useTracking(game: GameInput) {
   const isWatchlisted = game.id in data.watchlist;
   const isPlayed = game.id in data.played;
   const rating = data.played[game.id]?.rating ?? null;
+  const comment = data.played[game.id]?.comment ?? null;
   const hasReported = data.reportedGameIds.includes(game.id);
 
   const toggleWatchlist = useCallback(() => {
@@ -104,6 +105,7 @@ export function useTracking(game: GameInput) {
           ...toTrackedGameData(game),
           playedAt: new Date().toISOString(),
           rating: null,
+          comment: null,
         };
       }
     });
@@ -122,6 +124,27 @@ export function useTracking(game: GameInput) {
     [game.id],
   );
 
+  const markPlayedWithReview = useCallback(
+    (reviewRating: number | null, reviewComment: string | null) => {
+      mutate((d) => {
+        if (game.id in d.played) {
+          const entry = d.played[game.id];
+          entry.rating = reviewRating;
+          entry.comment = reviewComment;
+        } else {
+          d.played[game.id] = {
+            ...toTrackedGameData(game),
+            playedAt: new Date().toISOString(),
+            rating: reviewRating,
+            comment: reviewComment,
+          };
+        }
+      });
+      tryHaptic();
+    },
+    [game],
+  );
+
   const markReported = useCallback(() => {
     mutate((d) => {
       if (!d.reportedGameIds.includes(game.id)) {
@@ -134,10 +157,12 @@ export function useTracking(game: GameInput) {
     isWatchlisted,
     isPlayed,
     rating,
+    comment,
     hasReported,
     toggleWatchlist,
     togglePlayed,
     setRating,
+    markPlayedWithReview,
     markReported,
   };
 }
