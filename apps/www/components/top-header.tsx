@@ -1,5 +1,6 @@
 import { Info } from "lucide-react";
 import Link from "next/link";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export function TopHeader() {
   return (
@@ -8,13 +9,16 @@ export function TopHeader() {
         <Link href="/" className="text-lg font-bold tracking-tight">
           PAX Pal
         </Link>
-        <Link
-          href="/about"
-          className="rounded-md p-1.5 text-muted-foreground transition-colors hover:text-foreground"
-          aria-label="About PAX Pal"
-        >
-          <Info className="size-5" />
-        </Link>
+        <div className="flex items-center gap-1">
+          <Link
+            href="/about"
+            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:text-foreground"
+            aria-label="About PAX Pal"
+          >
+            <Info className="size-5" />
+          </Link>
+          <ThemeToggle />
+        </div>
       </div>
     </header>
   );

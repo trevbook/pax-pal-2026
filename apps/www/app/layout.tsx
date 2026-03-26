@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { BottomNav } from "@/components/bottom-nav";
+import { ThemeProvider } from "@/components/theme-provider";
 import { TopHeader } from "@/components/top-header";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
@@ -34,14 +35,21 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <TopHeader />
-        <main className="min-h-[calc(100dvh-theme(spacing.12)-theme(spacing.14))] pb-14">
-          {children}
-        </main>
-        <BottomNav />
-        <Toaster />
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <TopHeader />
+          <main className="min-h-[calc(100dvh-theme(spacing.12)-theme(spacing.14))] pb-14">
+            {children}
+          </main>
+          <BottomNav />
+          <Toaster />
+        </ThemeProvider>
       </body>
     </html>
   );
