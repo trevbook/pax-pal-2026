@@ -38,8 +38,7 @@ function makeGame(overrides: Partial<HarmonizedGame> = {}): HarmonizedGame {
 const fakeBggResult: BggEnrichment = {
   bggId: 99999,
   bggName: "Board Battle",
-  matchScore: 0.95,
-  matchMethod: "auto",
+  matchMethod: "web_search",
   playerCount: "2-4",
   playTime: "30-60 min",
   complexity: 2.5,

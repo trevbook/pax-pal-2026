@@ -120,8 +120,7 @@ describe("buildGamePrompt", () => {
       bgg: {
         bggId: 12345,
         bggName: "Cool Game",
-        matchScore: 0.95,
-        matchMethod: "auto",
+        matchMethod: "web_search",
         playerCount: "2-4",
         playTime: "60 min",
         complexity: 2.5,

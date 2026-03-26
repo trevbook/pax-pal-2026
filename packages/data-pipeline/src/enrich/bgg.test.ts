@@ -1,55 +1,28 @@
 import { describe, expect, it } from "bun:test";
-import { levenshteinSimilarity } from "./bgg";
+import { extractBggId } from "./bgg";
 
-describe("levenshteinSimilarity", () => {
-  it("returns 1.0 for identical strings", () => {
-    expect(levenshteinSimilarity("Catan", "Catan")).toBe(1);
+describe("extractBggId", () => {
+  it("extracts ID from standard BGG URL", () => {
+    expect(extractBggId("https://boardgamegeek.com/boardgame/268201/dice-throne")).toBe(268201);
   });
 
-  it("is case-insensitive", () => {
-    expect(levenshteinSimilarity("catan", "CATAN")).toBe(1);
+  it("extracts ID from BGG URL without slug", () => {
+    expect(extractBggId("https://boardgamegeek.com/boardgame/268201")).toBe(268201);
   });
 
-  it("trims whitespace", () => {
-    expect(levenshteinSimilarity("  Catan  ", "Catan")).toBe(1);
+  it("extracts ID from www variant", () => {
+    expect(extractBggId("https://www.boardgamegeek.com/boardgame/199792/everdell")).toBe(199792);
   });
 
-  it("returns high similarity for close names", () => {
-    const score = levenshteinSimilarity("Wingspan", "Wingspans");
-    expect(score).toBeGreaterThan(0.85);
+  it("returns null for non-BGG URL", () => {
+    expect(extractBggId("https://store.steampowered.com/app/123")).toBeNull();
   });
 
-  it("returns moderate similarity for somewhat related names", () => {
-    const score = levenshteinSimilarity("Ticket to Ride", "Ticket to Ride: Europe");
-    expect(score).toBeGreaterThan(0.5);
-    expect(score).toBeLessThan(0.9);
+  it("returns null for BGG non-boardgame URL", () => {
+    expect(extractBggId("https://boardgamegeek.com/thread/12345/some-topic")).toBeNull();
   });
 
-  it("returns low similarity for unrelated names", () => {
-    const score = levenshteinSimilarity("Catan", "Monopoly");
-    expect(score).toBeLessThan(0.4);
-  });
-
-  it("handles empty strings", () => {
-    expect(levenshteinSimilarity("", "")).toBe(1);
-    expect(levenshteinSimilarity("abc", "")).toBe(0);
-    expect(levenshteinSimilarity("", "abc")).toBe(0);
-  });
-
-  it("handles single character differences", () => {
-    // "cat" vs "bat" — 1 substitution out of 3 chars = 0.667
-    const score = levenshteinSimilarity("cat", "bat");
-    expect(score).toBeCloseTo(0.667, 2);
-  });
-
-  it("scores subtitled names below auto-accept threshold", () => {
-    // This documents why the subtitle fallback search is needed:
-    // subtitled game names score poorly against BGG's base name
-    const score = levenshteinSimilarity(
-      "Invincible: The Card Game - New Recruits",
-      "Invincible: The Card Game",
-    );
-    expect(score).toBeLessThan(0.9);
-    expect(score).toBeGreaterThan(0.5);
+  it("returns null for empty string", () => {
+    expect(extractBggId("")).toBeNull();
   });
 });

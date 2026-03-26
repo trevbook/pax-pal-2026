@@ -2,57 +2,18 @@ import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { openai } from "@ai-sdk/openai";
 import type { HarmonizedGame } from "@pax-pal/core";
-import { generateObject } from "ai";
+import { generateText, Output, stepCountIs } from "ai";
 import * as cheerio from "cheerio";
 import cliProgress from "cli-progress";
-import type { BggEnrichment, BggSearchCandidate } from "./types";
-import { bggDisambiguationSchema } from "./types";
+import type { BggEnrichment } from "./types";
+import { bggWebSearchSchema } from "./types";
 
 // ---------------------------------------------------------------------------
-// Levenshtein similarity
-// ---------------------------------------------------------------------------
-
-/**
- * Compute the Levenshtein edit distance between two strings.
- */
-function levenshteinDistance(a: string, b: string): number {
-  const m = a.length;
-  const n = b.length;
-  const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
-
-  for (let i = 0; i <= m; i++) dp[i][0] = i;
-  for (let j = 0; j <= n; j++) dp[0][j] = j;
-
-  for (let i = 1; i <= m; i++) {
-    for (let j = 1; j <= n; j++) {
-      dp[i][j] =
-        a[i - 1] === b[j - 1]
-          ? dp[i - 1][j - 1]
-          : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
-    }
-  }
-
-  return dp[m][n];
-}
-
-/**
- * Normalized Levenshtein similarity (0–1). Case-insensitive.
- */
-export function levenshteinSimilarity(a: string, b: string): number {
-  const la = a.toLowerCase().trim();
-  const lb = b.toLowerCase().trim();
-  if (la === lb) return 1;
-  const maxLen = Math.max(la.length, lb.length);
-  if (maxLen === 0) return 1;
-  return 1 - levenshteinDistance(la, lb) / maxLen;
-}
-
-// ---------------------------------------------------------------------------
-// BGG XML API
+// BGG XML API (detail fetching only)
 // ---------------------------------------------------------------------------
 
 const BGG_BASE = "https://boardgamegeek.com/xmlapi2";
-const BGG_DELAY_MS = 1100; // ~1 req/sec
+const BGG_DELAY_MS = 1100; // ~1 req/sec for detail fetches
 
 /**
  * Build headers for BGG XML API requests.
@@ -74,48 +35,11 @@ async function delay(ms: number): Promise<void> {
 }
 
 /**
- * Search BGG for board games matching the query.
- * Returns up to 10 candidates sorted by year (desc, nulls last).
- */
-export async function searchBgg(query: string): Promise<BggSearchCandidate[]> {
-  const url = `${BGG_BASE}/search?query=${encodeURIComponent(query)}&type=boardgame`;
-  const res = await fetch(url, { headers: bggHeaders() });
-  if (!res.ok) return [];
-
-  const xml = await res.text();
-  const $ = cheerio.load(xml, { xmlMode: true });
-
-  const candidates: BggSearchCandidate[] = [];
-
-  $("item").each((_, el) => {
-    const id = Number($(el).attr("id"));
-    const name = $(el).find("name").attr("value") ?? "";
-    const yearStr = $(el).find("yearpublished").attr("value");
-    const yearPublished = yearStr ? Number(yearStr) : null;
-
-    if (id && name) {
-      candidates.push({ bggId: id, name, yearPublished });
-    }
-  });
-
-  // Sort by year descending (nulls last)
-  candidates.sort((a, b) => {
-    if (a.yearPublished === null && b.yearPublished === null) return 0;
-    if (a.yearPublished === null) return 1;
-    if (b.yearPublished === null) return -1;
-    return b.yearPublished - a.yearPublished;
-  });
-
-  return candidates.slice(0, 10);
-}
-
-/**
  * Fetch detailed info for a BGG game by ID.
  */
 export async function fetchBggDetails(
   bggId: number,
-  matchScore: number,
-  matchMethod: "auto" | "llm",
+  matchMethod: BggEnrichment["matchMethod"],
 ): Promise<BggEnrichment> {
   const url = `${BGG_BASE}/thing?id=${bggId}&stats=1`;
   const res = await fetch(url, { headers: bggHeaders() });
@@ -164,7 +88,6 @@ export async function fetchBggDetails(
   return {
     bggId,
     bggName,
-    matchScore,
     matchMethod,
     playerCount,
     playTime,
@@ -178,39 +101,54 @@ export async function fetchBggDetails(
 }
 
 // ---------------------------------------------------------------------------
-// LLM disambiguation
+// BGG URL → ID extraction
+// ---------------------------------------------------------------------------
+
+const BGG_URL_RE = /boardgamegeek\.com\/boardgame\/(\d+)/;
+
+/**
+ * Extract the BGG game ID from a boardgamegeek.com URL.
+ * Returns null if the URL doesn't match.
+ */
+export function extractBggId(url: string): number | null {
+  const match = BGG_URL_RE.exec(url);
+  return match ? Number(match[1]) : null;
+}
+
+// ---------------------------------------------------------------------------
+// Web search → BGG ID lookup
 // ---------------------------------------------------------------------------
 
 /**
- * Use gpt-5.4-nano to pick the best BGG candidate for a game.
- * Returns the 0-based index of the best match, or null if none match.
+ * Use LLM web search to find the BoardGameGeek page for a game.
+ * Returns the BGG ID if found, null otherwise.
  */
-export async function disambiguateBgg(
-  gameName: string,
-  gameDescription: string | null,
-  candidates: BggSearchCandidate[],
-): Promise<number | null> {
-  const candidateList = candidates
-    .map((c, i) => `${i}. "${c.name}" (${c.yearPublished ?? "year unknown"})`)
-    .join("\n");
+export async function findBggViaWebSearch(game: HarmonizedGame): Promise<number | null> {
+  const descHint = game.description ? `\nDescription: ${game.description.slice(0, 200)}` : "";
 
-  const descHint = gameDescription ? `\nDescription: ${gameDescription.slice(0, 200)}` : "";
+  const { output } = await generateText({
+    model: openai("gpt-5.4-mini"),
+    prompt: `Find the BoardGameGeek page for this tabletop game from PAX East 2026:
 
-  const { object } = await generateObject({
-    model: openai("gpt-5.4-nano"),
-    schema: bggDisambiguationSchema,
-    prompt: `Given this game from PAX East 2026:
-Name: "${gameName}"${descHint}
+Name: "${game.name}"${descHint}
 
-Which of these BoardGameGeek results (if any) is the same game?
-${candidateList}
-
-Return the index number of the best match, or null if none match. Only match if you are confident it is the same game.`,
+Search for this game on BoardGameGeek. Return the BGG URL if you find the correct base game page (not an expansion, promo, or variant unless the game itself IS an expansion/variant). Return null if the game is not on BGG.`,
+    tools: {
+      web_search: openai.tools.webSearch({ searchContextSize: "low" }),
+    },
+    output: Output.object({ schema: bggWebSearchSchema }),
+    stopWhen: stepCountIs(4),
   });
 
-  if (object.bestMatchIndex === null) return null;
-  if (object.bestMatchIndex < 0 || object.bestMatchIndex >= candidates.length) return null;
-  return object.bestMatchIndex;
+  if (!output?.bggUrl) return null;
+
+  const bggId = extractBggId(output.bggUrl);
+  if (!bggId) {
+    console.log(`[bgg] "${game.name}": could not extract ID from URL "${output.bggUrl}"`);
+    return null;
+  }
+
+  return bggId;
 }
 
 // ---------------------------------------------------------------------------
@@ -218,88 +156,20 @@ Return the index number of the best match, or null if none match. Only match if 
 // ---------------------------------------------------------------------------
 
 /**
- * Attempt to enrich a single game from BGG.
+ * Attempt to enrich a single game from BGG via web search → API detail fetch.
  * Returns BggEnrichment if a match is found, null otherwise.
  */
 export async function enrichFromBgg(game: HarmonizedGame): Promise<BggEnrichment | null> {
-  let candidates = await searchBgg(game.name);
-
-  // Subtitle fallback: if full name yields poor results and contains a subtitle
-  // separator (colon, dash, em dash), retry with just the base name.
-  const SUBTITLE_RE = /[:\-–—]/;
-
-  if (candidates.length === 0 && SUBTITLE_RE.test(game.name)) {
-    const baseName = game.name.split(SUBTITLE_RE)[0].trim();
-    if (baseName.length >= 3) {
-      console.log(`[bgg] No results for "${game.name}", retrying as "${baseName}"`);
-      await delay(BGG_DELAY_MS);
-      candidates = await searchBgg(baseName);
-    }
-  } else if (candidates.length > 0) {
-    const bestInitialScore = Math.max(
-      ...candidates.map((c) => levenshteinSimilarity(game.name, c.name)),
-    );
-    if (bestInitialScore < 0.6 && SUBTITLE_RE.test(game.name)) {
-      const baseName = game.name.split(SUBTITLE_RE)[0].trim();
-      if (baseName.length >= 3 && baseName !== game.name) {
-        console.log(
-          `[bgg] Low match for "${game.name}" (best: ${bestInitialScore.toFixed(2)}), retrying as "${baseName}"`,
-        );
-        await delay(BGG_DELAY_MS);
-        const fallbackCandidates = await searchBgg(baseName);
-        if (fallbackCandidates.length > 0) {
-          const fallbackBest = Math.max(
-            ...fallbackCandidates.map((c) => levenshteinSimilarity(game.name, c.name)),
-          );
-          if (fallbackBest > bestInitialScore) {
-            candidates = fallbackCandidates;
-          }
-        }
-      }
-    }
+  const bggId = await findBggViaWebSearch(game);
+  if (bggId === null) {
+    console.log(`[bgg] "${game.name}": not found on BGG`);
+    return null;
   }
 
-  if (candidates.length === 0) return null;
-
+  console.log(`[bgg] "${game.name}": found BGG ID ${bggId}`);
   await delay(BGG_DELAY_MS);
 
-  // Score all candidates
-  const scored = candidates.map((c) => ({
-    candidate: c,
-    score: levenshteinSimilarity(game.name, c.name),
-  }));
-  scored.sort((a, b) => b.score - a.score);
-
-  const best = scored[0];
-  console.log(
-    `[bgg] "${game.name}": ${candidates.length} candidates, best="${best.candidate.name}" score=${best.score.toFixed(2)}`,
-  );
-
-  // Auto-accept: high confidence match
-  if (best.score > 0.9) {
-    const details = await fetchBggDetails(best.candidate.bggId, best.score, "auto");
-    await delay(BGG_DELAY_MS);
-    return details;
-  }
-
-  // Disambiguate: moderate confidence
-  if (best.score >= 0.6) {
-    const top5 = scored.slice(0, 5).map((s) => s.candidate);
-    try {
-      const matchIndex = await disambiguateBgg(game.name, game.description, top5);
-      if (matchIndex !== null) {
-        const matched = top5[matchIndex];
-        const details = await fetchBggDetails(matched.bggId, scored[matchIndex].score, "llm");
-        await delay(BGG_DELAY_MS);
-        return details;
-      }
-    } catch (error) {
-      console.error(`[bgg] LLM disambiguation failed for "${game.name}": ${error}`);
-    }
-  }
-
-  // No match
-  return null;
+  return fetchBggDetails(bggId, "web_search");
 }
 
 // ---------------------------------------------------------------------------
@@ -338,6 +208,7 @@ async function saveBggCache(
 export interface BggOptions {
   cacheDir?: string;
   skipCache?: boolean;
+  concurrency?: number;
 }
 
 export interface BggResult {
@@ -346,7 +217,7 @@ export interface BggResult {
 }
 
 /**
- * Check whether BGG enrichment can run (requires BGG_API_TOKEN).
+ * Check whether BGG enrichment can run (requires BGG_API_TOKEN + OPENAI_API_KEY).
  */
 export function isBggConfigured(): boolean {
   return !!process.env.BGG_API_TOKEN;
@@ -354,8 +225,8 @@ export function isBggConfigured(): boolean {
 
 /**
  * Run BGG enrichment for all tabletop/both games.
- * Sequential (1 req/sec rate limit) with progress bar and caching.
- * Skips gracefully if BGG_API_TOKEN is not set.
+ * Uses LLM web search to find BGG pages, then fetches details via the XML API.
+ * Sequential BGG API calls (1 req/sec rate limit) but web searches run concurrently.
  */
 export async function runBggEnrichment(
   games: HarmonizedGame[],
@@ -368,7 +239,7 @@ export async function runBggEnrichment(
     return { results: new Map(), cachedCount: 0 };
   }
 
-  const { cacheDir, skipCache = false } = options;
+  const { cacheDir, skipCache = false, concurrency = 4 } = options;
 
   const cached =
     cacheDir && !skipCache ? await loadBggCache(cacheDir) : new Map<string, BggEnrichment | null>();
@@ -392,23 +263,36 @@ export async function runBggEnrichment(
   );
   bar.start(uncached.length, 0);
 
-  for (const game of uncached) {
-    try {
-      const result = await enrichFromBgg(game);
-      results.set(game.id, result);
-      if (cacheDir) {
-        await saveBggCache(cacheDir, game.id, result);
+  // Worker pool with bounded concurrency
+  let nextIndex = 0;
+
+  async function processNext(): Promise<void> {
+    while (nextIndex < uncached.length) {
+      const i = nextIndex++;
+      const game = uncached[i];
+
+      try {
+        const result = await enrichFromBgg(game);
+        results.set(game.id, result);
+        if (cacheDir) {
+          await saveBggCache(cacheDir, game.id, result);
+        }
+      } catch (error) {
+        console.error(`\n[bgg] Error enriching "${game.name}": ${error}`);
+        results.set(game.id, null);
+        if (cacheDir) {
+          await saveBggCache(cacheDir, game.id, null);
+        }
       }
-    } catch (error) {
-      console.error(`\n[bgg] Error enriching "${game.name}": ${error}`);
-      results.set(game.id, null);
-      if (cacheDir) {
-        await saveBggCache(cacheDir, game.id, null);
-      }
+      bar.increment();
     }
-    bar.increment();
   }
 
+  const workers = Array.from({ length: Math.min(concurrency, uncached.length) }, () =>
+    processNext(),
+  );
+  await Promise.all(workers);
   bar.stop();
+
   return { results, cachedCount: cached.size };
 }

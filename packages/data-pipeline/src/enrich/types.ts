@@ -5,17 +5,10 @@ import { z } from "zod";
 // BGG enrichment
 // ---------------------------------------------------------------------------
 
-export interface BggSearchCandidate {
-  bggId: number;
-  name: string;
-  yearPublished: number | null;
-}
-
 export interface BggEnrichment {
   bggId: number;
   bggName: string;
-  matchScore: number;
-  matchMethod: "auto" | "llm" | "none";
+  matchMethod: "web_search";
   playerCount: string | null;
   playTime: string | null;
   complexity: number | null;
@@ -26,14 +19,11 @@ export interface BggEnrichment {
   yearPublished: number | null;
 }
 
-/** Schema for gpt-5.4-nano BGG disambiguation. */
-export const bggDisambiguationSchema = z.object({
-  /** Index (0-based) of the best matching BGG candidate, or null if none match. */
-  bestMatchIndex: z.number().nullable(),
-  reasoning: z.string(),
+/** Schema for LLM web search → BGG URL lookup. */
+export const bggWebSearchSchema = z.object({
+  /** The BoardGameGeek URL for the game, or null if not found. */
+  bggUrl: z.string().nullable(),
 });
-
-export type BggDisambiguation = z.infer<typeof bggDisambiguationSchema>;
 
 // ---------------------------------------------------------------------------
 // Web search enrichment

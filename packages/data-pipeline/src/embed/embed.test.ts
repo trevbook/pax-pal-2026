@@ -286,8 +286,7 @@ describe("assembleGame", () => {
       bgg: {
         bggId: 54321,
         bggName: "Cool Game",
-        matchScore: 0.95,
-        matchMethod: "auto",
+        matchMethod: "web_search",
         playerCount: "2-4",
         playTime: "60-90 min",
         complexity: 3.2,
