@@ -189,6 +189,8 @@ export interface Game {
   description: string | null;
   imageUrl: string | null;
   mediaUrls: string[];
+  /** Map of video URL → thumbnail image URL (Steam movies, etc.). */
+  videoThumbnails: Record<string, string>;
   exhibitor: string;
   /** PAX exhibitor data-id. */
   exhibitorId: string;
@@ -226,6 +228,8 @@ export interface Game {
 
   // Search
   embedding: number[] | null;
+  /** Top 3 most similar games by embedding cosine similarity (computed in `similar` pipeline stage). */
+  similarGameIds: string[];
 
   // Discovery
   /** How this game was discovered. Null for demo-sourced games. */
