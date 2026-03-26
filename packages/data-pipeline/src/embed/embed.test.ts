@@ -249,6 +249,7 @@ describe("assembleGame", () => {
         headerImage: "https://cdn.steam.com/header.jpg",
         screenshots: [],
         movies: [],
+        steamMovies: [],
         price: "$19.99",
         genres: [],
         categories: [],

@@ -136,10 +136,19 @@ export function assembleGame(
 
   // Collect media URLs (screenshots + trailers)
   const mediaUrls: string[] = [];
+  const videoThumbnails: Record<string, string> = {};
   if (web?.screenshotUrls) mediaUrls.push(...web.screenshotUrls);
   if (web?.trailerUrl) mediaUrls.push(web.trailerUrl);
   if (steam?.screenshots) mediaUrls.push(...steam.screenshots);
-  if (steam?.movies) mediaUrls.push(...steam.movies);
+  // Prefer new HLS movies, fall back to legacy webm URLs
+  if (steam?.steamMovies?.length) {
+    for (const m of steam.steamMovies) {
+      mediaUrls.push(m.hlsUrl);
+      videoThumbnails[m.hlsUrl] = m.thumbnail;
+    }
+  } else if (steam?.movies) {
+    mediaUrls.push(...steam.movies);
+  }
 
   // Build press links
   const pressLinks: PressLink[] = web?.pressLinks ?? [];
@@ -189,6 +198,7 @@ export function assembleGame(
     description,
     imageUrl,
     mediaUrls,
+    videoThumbnails,
     exhibitor: game.exhibitor,
     exhibitorId: game.exhibitorId,
     boothId: game.boothLocation,
@@ -213,6 +223,7 @@ export function assembleGame(
     complexity,
     mechanics: classification?.mechanics ?? null,
     embedding,
+    similarGameIds: [],
     discoverySource: game.discoverySource,
     discoveryMeta: game.discoveryMeta ?? null,
     sourcePages: game.sourcePages,

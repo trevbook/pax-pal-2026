@@ -146,6 +146,7 @@ describe("buildGamePrompt", () => {
         headerImage: null,
         screenshots: [],
         movies: [],
+        steamMovies: [],
         price: "$19.99",
         genres: ["Action", "RPG"],
         categories: ["Single-player", "Co-op"],
