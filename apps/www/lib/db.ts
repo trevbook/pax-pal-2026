@@ -27,8 +27,17 @@ const exhibitorsTable = (Resource as unknown as Record<string, { name: string }>
 // Game queries
 // ---------------------------------------------------------------------------
 
-/** Fetch all active games, projected to GameCardData. */
-export async function getAllActiveGames(): Promise<GameCardData[]> {
+/** Fetch all active games, projected to GameCardData. Cached per-worker to avoid DynamoDB throttling during SSG. */
+let _allGamesCache: Promise<GameCardData[]> | null = null;
+
+export function getAllActiveGames(): Promise<GameCardData[]> {
+  if (!_allGamesCache) {
+    _allGamesCache = _fetchAllActiveGames();
+  }
+  return _allGamesCache;
+}
+
+async function _fetchAllActiveGames(): Promise<GameCardData[]> {
   const items: GameDynamoItem[] = [];
   let lastKey: Record<string, unknown> | undefined;
 

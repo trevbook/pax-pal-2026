@@ -11,7 +11,7 @@ import { TagChip } from "@/components/tag-chip";
 import { TypeBadge } from "@/components/type-badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { getAllActiveGames, getGameBySlug, getGamesByExhibitor } from "@/lib/db";
+import { getAllActiveGames, getGameBySlug } from "@/lib/db";
 import { formatBoothDisplay } from "@/lib/format-booth";
 import { isConfirmed } from "@/lib/game-card-data";
 
@@ -56,9 +56,9 @@ export default async function GameDetailPage({ params }: { params: Promise<{ slu
   const booth = formatBoothDisplay(game.boothId);
   const confirmed = isConfirmed(game.discoverySource, game.discoveryMeta?.inclusionTier);
 
-  // Fetch sibling games from same exhibitor
-  const siblingGames = await getGamesByExhibitor(game.exhibitorId);
-  const otherGames = siblingGames.filter((g) => g.id !== game.id);
+  // Fetch sibling games from same exhibitor (reuse getAllActiveGames to avoid extra scan)
+  const allGames = await getAllActiveGames();
+  const otherGames = allGames.filter((g) => g.exhibitorId === game.exhibitorId && g.id !== game.id);
 
   // Build the Find on Map href
   let mapHref: string | null = null;
