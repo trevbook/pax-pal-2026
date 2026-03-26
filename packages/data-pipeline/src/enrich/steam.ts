@@ -1,7 +1,7 @@
 import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import cliProgress from "cli-progress";
-import type { SteamEnrichment } from "./types";
+import type { SteamEnrichment, SteamMovie } from "./types";
 
 // ---------------------------------------------------------------------------
 // URL parsing
@@ -52,9 +52,18 @@ export async function fetchSteamDetails(appId: number): Promise<SteamEnrichment 
     .map((s: { path_full?: string }) => s.path_full)
     .filter(Boolean);
 
+  // Legacy webm extraction (kept for old cache compat, always empty on new API)
   const movies: string[] = (data.movies ?? [])
     .slice(0, 2)
     .map((m: { webm?: { max?: string } }) => m.webm?.max)
+    .filter(Boolean);
+
+  // New Steam API: HLS streaming URLs + thumbnails
+  const steamMovies: SteamMovie[] = (data.movies ?? [])
+    .slice(0, 2)
+    .map((m: { hls_h264?: string; thumbnail?: string }) =>
+      m.hls_h264 && m.thumbnail ? { hlsUrl: m.hls_h264, thumbnail: m.thumbnail } : null,
+    )
     .filter(Boolean);
 
   const price = data.is_free ? "Free to Play" : (data.price_overview?.final_formatted ?? null);
@@ -74,6 +83,7 @@ export async function fetchSteamDetails(appId: number): Promise<SteamEnrichment 
     headerImage: data.header_image ?? null,
     screenshots,
     movies,
+    steamMovies,
     price,
     genres,
     categories,

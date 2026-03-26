@@ -78,13 +78,23 @@ export type WebEnrichment = z.infer<typeof webEnrichmentSchema>;
 // Steam enrichment
 // ---------------------------------------------------------------------------
 
+export interface SteamMovie {
+  /** HLS playlist URL (natively supported on Safari, needs hls.js elsewhere). */
+  hlsUrl: string;
+  /** Thumbnail image URL. */
+  thumbnail: string;
+}
+
 export interface SteamEnrichment {
   steamAppId: number;
   name: string;
   shortDescription: string | null;
   headerImage: string | null;
   screenshots: string[];
+  /** @deprecated Use {@link steamMovies} instead — kept for cache compat. */
   movies: string[];
+  /** Structured movie data with HLS URLs and thumbnails. */
+  steamMovies: SteamMovie[];
   price: string | null;
   genres: string[];
   categories: string[];

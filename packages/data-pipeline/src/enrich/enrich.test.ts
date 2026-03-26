@@ -82,6 +82,7 @@ const fakeSteamResult: SteamEnrichment = {
   headerImage: "https://steamcdn.example.com/header.jpg",
   screenshots: ["https://steamcdn.example.com/ss1.jpg"],
   movies: [],
+  steamMovies: [],
   price: "$19.99",
   genres: ["RPG", "Adventure"],
   categories: ["Single-player"],
