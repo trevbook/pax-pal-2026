@@ -35,6 +35,8 @@ export const VIDEO_GAME_GENRES = [
   "Visual Novel",
   "Metroidvania",
   "Souls-like",
+  "Deckbuilder",
+  "Dungeon Crawler",
 ] as const;
 export type VideoGameGenre = (typeof VIDEO_GAME_GENRES)[number];
 

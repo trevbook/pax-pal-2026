@@ -185,6 +185,8 @@ export interface Game {
   type: GameType;
 
   // Core info
+  /** Ultra-short 5-7 word hook for compact card display. */
+  tagline: string | null;
   summary: string | null;
   description: string | null;
   imageUrl: string | null;
@@ -228,7 +230,7 @@ export interface Game {
 
   // Search
   embedding: number[] | null;
-  /** Top 3 most similar games by embedding cosine similarity (computed in `similar` pipeline stage). */
+  /** Top 10 most similar games by embedding cosine similarity (computed in `similar` pipeline stage). */
   similarGameIds: string[];
 
   // Discovery

@@ -30,6 +30,12 @@ export const bggWebSearchSchema = z.object({
 // ---------------------------------------------------------------------------
 
 export const webEnrichmentSchema = z.object({
+  tagline: z
+    .string()
+    .nullable()
+    .describe(
+      "A punchy 5-7 word tagline that captures the game's essence (e.g. 'Cozy farming sim with magical creatures')",
+    ),
   summary: z.string().nullable(),
   description: z.string().nullable(),
   imageUrl: z.string().nullable(),

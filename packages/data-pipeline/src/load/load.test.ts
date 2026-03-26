@@ -14,6 +14,7 @@ function makeGame(overrides: Partial<Game> = {}): Game {
     name: "Cool Game",
     slug: "cool-game",
     type: "video_game",
+    tagline: "Cool roguelike action adventure game",
     summary: "A cool game summary",
     description: "An exciting action roguelike",
     imageUrl: "https://example.com/original.png",

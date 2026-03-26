@@ -90,6 +90,7 @@ describe("buildGamePrompt", () => {
     const game = makeGame();
     const meta = makeMeta(game.id, {
       web: {
+        tagline: null,
         summary: "A game",
         description: null,
         imageUrl: null,
@@ -261,6 +262,7 @@ describe("classify", () => {
     const game = makeGame();
     const meta = makeMeta(game.id, {
       web: {
+        tagline: null,
         summary: "Test",
         description: null,
         imageUrl: null,

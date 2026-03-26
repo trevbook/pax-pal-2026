@@ -24,6 +24,7 @@ You have a web search tool. Use it to find detailed information about this game.
 
 ## What to find
 For EVERY game, try to find:
+- **tagline**: A punchy 5-7 word tagline that captures the game's essence in a glance (e.g. "Cozy farming sim with magical creatures", "Roguelike deckbuilder in a dying world", "Build and race custom hovercrafts"). Keep it lowercase-style (no period). This is shown on compact game cards so it must be ultra-concise.
 - **summary**: A catchy 1-2 sentence hook describing the game
 - **description**: A fuller description (2-4 sentences) if available
 - **imageUrl**: Official key art, Steam header image, or publisher site image

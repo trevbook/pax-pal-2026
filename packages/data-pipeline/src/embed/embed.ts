@@ -167,7 +167,8 @@ export function assembleGame(
   // Pick best description: web > BGG > original
   const description = web?.description ?? bgg?.description ?? game.description;
 
-  // Summary from web enrichment
+  // Tagline and summary from web enrichment
+  const tagline = web?.tagline ?? null;
   const summary = web?.summary ?? null;
 
   // Release status
@@ -194,6 +195,7 @@ export function assembleGame(
     name: game.name,
     slug: game.slug,
     type: game.type,
+    tagline,
     summary,
     description,
     imageUrl,

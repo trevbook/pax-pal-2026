@@ -68,7 +68,7 @@ These PAX site tags map to taxonomy values:
 - "Shooter" → genre Shooter
 - "Strategy" → genre Strategy
 - "MMO" → genre MMO
-- "Deck Builder" → mechanic Deck-Builder
+- "Deck Builder" → genre Deckbuilder (for video games) OR mechanic Deck-Builder (for tabletop)
 - "Dice" → mechanic Dice
 - "CCG" → mechanic CCG
 - "Single Player" → audienceTag Single-Player

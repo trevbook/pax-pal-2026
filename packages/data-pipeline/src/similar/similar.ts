@@ -1,6 +1,6 @@
 import type { Game } from "@pax-pal/core";
 
-const SIMILAR_COUNT = 3;
+const SIMILAR_COUNT = 10;
 
 /**
  * Compute cosine similarity between all game pairs using their embeddings,
@@ -30,7 +30,7 @@ export function computeSimilarGames(games: Game[]): {
 
   let computed = 0;
 
-  // For each game with an embedding, find the top 3 most similar
+  // For each game with an embedding, find the top N most similar
   for (let i = 0; i < withEmbeddings.length; i++) {
     const a = withEmbeddings[i];
     const scores: { gameIndex: number; similarity: number }[] = [];

@@ -76,6 +76,7 @@ describe("buildEmbeddingText", () => {
     const game = makeGame();
     const meta = makeMeta(game.id, {
       web: {
+        tagline: "Fast roguelike with pixel art",
         summary: "A fast-paced roguelike with pixel art",
         description: null,
         imageUrl: null,
@@ -167,6 +168,7 @@ describe("assembleGame", () => {
     const game = makeGame();
     const meta = makeMeta(game.id, {
       web: {
+        tagline: "Great action-packed adventure awaits",
         summary: "A great action game",
         description: "Extended description here",
         imageUrl: "https://example.com/web.png",
@@ -225,6 +227,7 @@ describe("assembleGame", () => {
     const game = makeGame();
     const meta = makeMeta(game.id, {
       web: {
+        tagline: null,
         summary: null,
         description: null,
         imageUrl: "https://example.com/web.png",
@@ -386,6 +389,7 @@ describe("embed", () => {
     const game = makeGame();
     const meta = makeMeta(game.id, {
       web: {
+        tagline: "Web tagline here",
         summary: "Web summary here",
         description: null,
         imageUrl: null,

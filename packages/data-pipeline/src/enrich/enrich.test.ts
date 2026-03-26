@@ -50,6 +50,7 @@ const fakeBggResult: BggEnrichment = {
 };
 
 const fakeWebResult: WebEnrichment = {
+  tagline: "Epic quest through enchanted realms",
   summary: "An epic adventure game with great mechanics",
   description: "Test Quest is an epic adventure...",
   imageUrl: "https://web.example.com/image.jpg",

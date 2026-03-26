@@ -256,6 +256,7 @@ function scrubSocialLink(
 function scrubWebEnrichment(web: WebEnrichment, invalidUrls: Set<string>): WebEnrichment {
   return {
     ...web,
+    tagline: stripCitations(web.tagline),
     summary: stripCitations(web.summary),
     description: stripCitations(web.description),
     imageUrl: isValid(web.imageUrl, invalidUrls),
