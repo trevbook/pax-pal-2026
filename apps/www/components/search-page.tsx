@@ -2,7 +2,7 @@
 
 import { Loader2, Search, X } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import type { MatchType, SearchResult } from "@/app/search/actions";
 import { semanticSearch, textSearch } from "@/app/search/actions";
 import { cn } from "@/lib/utils";
@@ -332,14 +332,22 @@ export function SearchPage() {
               )}
             </div>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {mergedResults.map((result) => (
-                <div key={result.game.id} className="relative">
-                  <GameCard game={result.game} />
-                  <div className="absolute top-2 left-2 z-10">
-                    <MatchBadge type={result.matchType} />
+                <React.Fragment key={result.game.id}>
+                  <div className="relative sm:hidden">
+                    <GameCard game={result.game} variant="mobile" />
+                    <div className="absolute top-2 left-2 z-10">
+                      <MatchBadge type={result.matchType} />
+                    </div>
                   </div>
-                </div>
+                  <div className="relative hidden sm:block">
+                    <GameCard game={result.game} />
+                    <div className="absolute top-2 left-2 z-10">
+                      <MatchBadge type={result.matchType} />
+                    </div>
+                  </div>
+                </React.Fragment>
               ))}
             </div>
           </div>

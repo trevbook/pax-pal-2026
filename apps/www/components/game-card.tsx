@@ -57,23 +57,30 @@ function getTopChips(game: GameCardData, max = 3): string[] {
 }
 
 // ---------------------------------------------------------------------------
-// GameCard — standard variant
+// GameCard variants
 // ---------------------------------------------------------------------------
+
+type GameCardVariant = "default" | "compact" | "mobile";
 
 export function GameCard({
   game,
   compact = false,
+  variant,
   className,
 }: {
   game: GameCardData;
+  /** @deprecated Use `variant="compact"` instead. */
   compact?: boolean;
+  variant?: GameCardVariant;
   className?: string;
 }) {
+  const resolved = variant ?? (compact ? "compact" : "default");
   const booth = formatBoothDisplay(game.boothId);
   const chips = getTopChips(game);
   const isUnconfirmed = !game.confirmed;
 
-  if (compact) {
+  // ---- Compact: minimal horizontal row (booth sheet) ----
+  if (resolved === "compact") {
     return (
       <Link
         href={`/games/${game.slug}`}
@@ -83,12 +90,9 @@ export function GameCard({
           className,
         )}
       >
-        {/* Thumbnail */}
         <div className="relative size-16 shrink-0 overflow-hidden rounded-md">
           <GameImage src={game.imageUrl} alt={game.name} type={game.type} className="rounded-md" />
         </div>
-
-        {/* Info */}
         <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
           <h3 className="truncate text-sm font-semibold leading-tight">{game.name}</h3>
           <p className="truncate text-xs text-muted-foreground">
@@ -100,6 +104,47 @@ export function GameCard({
     );
   }
 
+  // ---- Mobile: horizontal row with tags (space-efficient for lists) ----
+  if (resolved === "mobile") {
+    return (
+      <Link
+        href={`/games/${game.slug}`}
+        className={cn(
+          "group flex gap-3 rounded-lg border border-border bg-card p-3 transition-colors hover:bg-accent/50",
+          isUnconfirmed && "border-dashed border-muted-foreground/30",
+          className,
+        )}
+      >
+        {/* Thumbnail */}
+        <div className="relative size-20 shrink-0 overflow-hidden rounded-md">
+          <GameImage src={game.imageUrl} alt={game.name} type={game.type} className="rounded-md" />
+          {isUnconfirmed && (
+            <span className="absolute bottom-0.5 left-0.5 rounded bg-yellow-100/90 px-1 py-px text-[8px] font-medium text-yellow-800 dark:bg-yellow-900/70 dark:text-yellow-300">
+              Unconfirmed
+            </span>
+          )}
+        </div>
+
+        {/* Info */}
+        <div className="flex min-w-0 flex-1 flex-col justify-center gap-1">
+          <h3 className="truncate text-sm font-semibold leading-tight">{game.name}</h3>
+          <p className="truncate text-xs text-muted-foreground">
+            {game.exhibitor}
+            {booth ? ` · ${booth.label}` : ""}
+          </p>
+          {chips.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {chips.map((chip) => (
+                <TagChip key={chip} label={chip} />
+              ))}
+            </div>
+          )}
+        </div>
+      </Link>
+    );
+  }
+
+  // ---- Default: full vertical card ----
   return (
     <Link
       href={`/games/${game.slug}`}
@@ -109,7 +154,6 @@ export function GameCard({
         className,
       )}
     >
-      {/* Image */}
       <div className="relative aspect-[16/9] w-full overflow-hidden bg-muted">
         <GameImage src={game.imageUrl} alt={game.name} type={game.type} />
 
@@ -123,7 +167,6 @@ export function GameCard({
         )}
       </div>
 
-      {/* Content */}
       <div className="flex flex-1 flex-col gap-1.5 p-3">
         <h3 className="text-sm font-semibold leading-tight group-hover:underline">{game.name}</h3>
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { SlidersHorizontal, X } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import type { GameCardData } from "@/lib/game-card-data";
 import { compareBoothId } from "@/lib/sort-booth";
 import { cn } from "@/lib/utils";
@@ -350,9 +350,12 @@ export function GameCatalogue({ games }: { games: GameCardData[] }) {
           </div>
         ) : (
           <>
-            <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {visibleGames.map((game) => (
-                <GameCard key={game.id} game={game} />
+                <React.Fragment key={game.id}>
+                  <GameCard game={game} variant="mobile" className="sm:hidden" />
+                  <GameCard game={game} className="hidden sm:flex" />
+                </React.Fragment>
               ))}
             </div>
 
