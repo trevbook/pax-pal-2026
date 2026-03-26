@@ -37,12 +37,13 @@ const SUGGESTIONS = [
 // Helpers
 // ---------------------------------------------------------------------------
 
-function useWatchlistBody() {
+function useTrackingBody() {
   const tracking = useTrackingList();
   return useMemo(() => {
     const watchlistIds = Object.keys(tracking.watchlist);
-    return { watchlistIds };
-  }, [tracking.watchlist]);
+    const playedIds = Object.keys(tracking.played);
+    return { watchlistIds, playedIds };
+  }, [tracking.watchlist, tracking.played]);
 }
 
 function generateChatId() {
@@ -67,8 +68,8 @@ function timeAgo(iso: string): string {
 // ---------------------------------------------------------------------------
 
 export function ChatPage() {
-  const body = useWatchlistBody();
-  const hasWatchlist = body.watchlistIds.length > 0;
+  const body = useTrackingBody();
+  const hasTrackedGames = body.watchlistIds.length > 0 || body.playedIds.length > 0;
   const reactId = useId();
 
   // Active chat ID + history
@@ -197,7 +198,7 @@ export function ChatPage() {
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 pt-4 pb-2">
         {messages.length === 0 ? (
           <WelcomeState
-            hasWatchlist={hasWatchlist}
+            hasTrackedGames={hasTrackedGames}
             onSuggestion={handleSend}
             pastChats={pastChats}
             onViewChat={handleViewChat}
@@ -300,13 +301,13 @@ export function ChatPage() {
 // ---------------------------------------------------------------------------
 
 function WelcomeState({
-  hasWatchlist,
+  hasTrackedGames,
   onSuggestion,
   pastChats,
   onViewChat,
   onDeleteChat,
 }: {
-  hasWatchlist: boolean;
+  hasTrackedGames: boolean;
   onSuggestion: (text: string) => void;
   pastChats: StoredChat[];
   onViewChat: (chat: StoredChat) => void;
@@ -324,9 +325,9 @@ function WelcomeState({
           <p className="mt-1 text-sm text-muted-foreground">
             Your AI guide to PAX East 2026. Ask me anything about the games!
           </p>
-          {hasWatchlist && (
+          {hasTrackedGames && (
             <p className="mt-1 text-xs text-primary">
-              I can see your watchlist — ask for personalized recs!
+              I can see your games — ask for personalized recs!
             </p>
           )}
         </div>

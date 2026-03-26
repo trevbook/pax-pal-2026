@@ -8,23 +8,29 @@ import { getBoothGames, getGameDetails, getModel, SYSTEM_PROMPT, searchGames } f
 export const maxDuration = 30;
 
 export async function POST(req: Request) {
-  const { messages, watchlistIds }: { messages: UIMessage[]; watchlistIds: string[] } =
-    await req.json();
+  const {
+    messages,
+    watchlistIds,
+    playedIds,
+  }: { messages: UIMessage[]; watchlistIds: string[]; playedIds: string[] } = await req.json();
 
-  // Define analyzeWatchlist inline so it can close over watchlistIds
-  const analyzeWatchlist = tool({
+  // Combine watchlist + played for taste vector (deduplicated)
+  const allTrackedIds = [...new Set([...(watchlistIds ?? []), ...(playedIds ?? [])])];
+
+  // Define analyzeTaste inline so it can close over tracked IDs
+  const analyzeTaste = tool({
     description:
-      "Analyze the user's watchlist and recommend similar games they haven't seen yet. Use this when the user asks for personalized recommendations or 'what should I play?'",
+      "Analyze the user's tracked games (watchlist + played) and recommend similar games they haven't seen yet. Use this when the user asks for personalized recommendations, 'what should I play?', or anything about their taste/preferences.",
     inputSchema: z.object({}),
     execute: async () => {
-      if (!watchlistIds || watchlistIds.length === 0) {
+      if (allTrackedIds.length === 0) {
         return {
           error:
-            "Your watchlist is empty — add some games first, then I can give you personalized recs!",
+            "You haven't tracked any games yet — add some to your watchlist or mark some as played, then I can give you personalized recs!",
           games: [],
         };
       }
-      const recs = await getRecommendations(watchlistIds);
+      const recs = await getRecommendations(allTrackedIds);
       return { games: recs };
     },
   });
@@ -38,7 +44,7 @@ export async function POST(req: Request) {
       searchGames,
       getGameDetails,
       getBoothGames,
-      analyzeWatchlist,
+      analyzeTaste,
     },
   });
 
