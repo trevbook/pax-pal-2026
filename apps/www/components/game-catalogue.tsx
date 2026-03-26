@@ -1,8 +1,9 @@
 "use client";
 
-import { Info, SlidersHorizontal, X } from "lucide-react";
+import { Info, Loader2, SlidersHorizontal, X } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getRecommendedOrder } from "@/app/recommendations/actions";
+import { semanticSearch } from "@/app/search/actions";
 import { useTrackingList } from "@/hooks/use-tracking";
 import type { GameCardData } from "@/lib/game-card-data";
 import { compareBoothId } from "@/lib/sort-booth";
@@ -236,6 +237,45 @@ export function GameCatalogue({ games }: { games: GameCardData[] }) {
     setVisibleCount(PAGE_SIZE);
   }, []);
 
+  // Semantic search state
+  const [semanticScores, setSemanticScores] = useState<Map<string, number>>(new Map());
+  const [semanticLoading, setSemanticLoading] = useState(false);
+  const semanticAbortRef = useRef<string>("");
+
+  // Debounced semantic search when search text changes
+  useEffect(() => {
+    const q = searchText.trim();
+    if (!q || q.length < 3) {
+      setSemanticScores(new Map());
+      semanticAbortRef.current = "";
+      return;
+    }
+
+    const token = q;
+    setSemanticLoading(true);
+
+    const timer = setTimeout(async () => {
+      try {
+        const typeFilter = tab === "video_game" ? "video_game" : "tabletop";
+        const res = await semanticSearch(q, typeFilter);
+        // Only apply if the query hasn't changed
+        if (semanticAbortRef.current !== "" && semanticAbortRef.current !== token) return;
+        const scores = new Map<string, number>();
+        for (const r of res.results) {
+          scores.set(r.game.id, r.score);
+        }
+        setSemanticScores(scores);
+      } catch {
+        // Silently fail — text search still works
+      } finally {
+        setSemanticLoading(false);
+      }
+    }, 400);
+
+    semanticAbortRef.current = token;
+    return () => clearTimeout(timer);
+  }, [searchText, tab]);
+
   // Derived data
   const tabGames = useMemo(() => filterByTab(games, tab), [games, tab]);
   const availableChips = useMemo(() => getDistinctChips(tabGames, tab), [tabGames, tab]);
@@ -245,18 +285,47 @@ export function GameCatalogue({ games }: { games: GameCardData[] }) {
     if (hideUnconfirmed) {
       result = result.filter((g) => g.confirmed);
     }
-    if (searchText.trim()) {
-      result = result.filter((g) => matchesTextFilter(g, searchText.trim()));
-    }
     if (selectedChips.size > 0) {
       result = result.filter((g) => matchesChipFilter(g, selectedChips, tab));
     }
+
+    const q = searchText.trim();
+    if (q) {
+      // Combine local text matches with semantic results
+      const textMatches = new Set(result.filter((g) => matchesTextFilter(g, q)).map((g) => g.id));
+      const semanticMatches = semanticScores;
+      // Include games that match text OR semantic search
+      const matchedIds = new Set([...textMatches, ...semanticMatches.keys()]);
+      result = result.filter((g) => matchedIds.has(g.id));
+
+      // Score and sort by relevance when searching
+      if (sort !== "recommended") {
+        result.sort((a, b) => {
+          const aText = textMatches.has(a.id) ? 0.3 : 0;
+          const aSemantic = (semanticMatches.get(a.id) ?? 0) * 0.7;
+          const bText = textMatches.has(b.id) ? 0.3 : 0;
+          const bSemantic = (semanticMatches.get(b.id) ?? 0) * 0.7;
+          return bText + bSemantic - (aText + aSemantic);
+        });
+        return result;
+      }
+    }
+
     return sortGames(result, sort, recommendedRank);
-  }, [tabGames, hideUnconfirmed, searchText, selectedChips, sort, tab, recommendedRank]);
+  }, [
+    tabGames,
+    hideUnconfirmed,
+    searchText,
+    selectedChips,
+    sort,
+    tab,
+    recommendedRank,
+    semanticScores,
+  ]);
 
   const visibleGames = filteredGames.slice(0, visibleCount);
   const hasMore = visibleCount < filteredGames.length;
-  const activeFilterCount = selectedChips.size + (searchText.trim() ? 1 : 0);
+  const activeFilterCount = selectedChips.size + (hideUnconfirmed ? 1 : 0);
   const tabLabel = tab === "video_game" ? "video games" : "tabletop games";
 
   return (
@@ -295,15 +364,19 @@ export function GameCatalogue({ games }: { games: GameCardData[] }) {
         {/* Desktop filter bar — hidden on mobile */}
         <div className="hidden gap-3 sm:flex sm:flex-col">
           <div className="flex items-center gap-3">
-            <Input
-              placeholder={`Search ${tabLabel}…`}
-              value={searchText}
-              onChange={(e) => {
-                setSearchText(e.target.value);
-                setVisibleCount(PAGE_SIZE);
-              }}
-              className="max-w-xs"
-            />
+            <div className="relative max-w-xs">
+              <Input
+                placeholder={`Search ${tabLabel}…`}
+                value={searchText}
+                onChange={(e) => {
+                  setSearchText(e.target.value);
+                  setVisibleCount(PAGE_SIZE);
+                }}
+              />
+              {semanticLoading && (
+                <Loader2 className="absolute right-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+              )}
+            </div>
             <SortSelect value={sort} onChange={setSort} hasTracked={hasTracked} />
             <div className="flex items-center gap-2">
               <Switch
@@ -326,74 +399,79 @@ export function GameCatalogue({ games }: { games: GameCardData[] }) {
         </div>
 
         {/* Mobile filter bar — shown on small screens */}
-        <div className="flex items-center gap-2 sm:hidden">
-          <Input
-            placeholder={`Search ${tabLabel}…`}
-            value={searchText}
-            onChange={(e) => {
-              setSearchText(e.target.value);
-              setVisibleCount(PAGE_SIZE);
-            }}
-            className="flex-1"
-          />
-          <Drawer open={drawerOpen} onOpenChange={setDrawerOpen}>
-            <DrawerTrigger asChild>
-              <Button variant="outline" size="sm" className="shrink-0">
-                <SlidersHorizontal className="mr-1.5 size-4" />
-                Filters
-                {activeFilterCount > 0 && (
-                  <span className="ml-1.5 flex size-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
-                    {activeFilterCount}
-                  </span>
-                )}
-              </Button>
-            </DrawerTrigger>
-            <DrawerContent>
-              <DrawerHeader>
-                <DrawerTitle>Filters & Sort</DrawerTitle>
-              </DrawerHeader>
-              <div className="flex flex-col gap-4 overflow-y-auto px-4 pb-2">
-                <div>
-                  <p className="mb-2 text-sm font-medium">Sort by</p>
-                  <SortSelect value={sort} onChange={setSort} hasTracked={hasTracked} />
-                </div>
-                <div className="flex items-center gap-2">
-                  <Switch
-                    id="hide-unconfirmed-mobile"
-                    checked={hideUnconfirmed}
-                    onCheckedChange={setHideUnconfirmed}
-                  />
-                  <Label htmlFor="hide-unconfirmed-mobile" className="text-sm font-medium">
-                    Hide unconfirmed
-                  </Label>
-                </div>
-                <div>
-                  <p className="mb-2 text-sm font-medium">
-                    {tab === "video_game" ? "Genres" : "Mechanics"}
-                  </p>
-                  <FilterChips
-                    available={availableChips}
-                    selected={selectedChips}
-                    onToggle={toggleChip}
-                  />
-                </div>
-              </div>
-              <DrawerFooter>
-                <div className="flex gap-2">
+        <div className="flex flex-col gap-2 sm:hidden">
+          {/* Row 1: Sort + Filters button */}
+          <div className="flex items-center gap-2">
+            <SortSelect value={sort} onChange={setSort} hasTracked={hasTracked} />
+            <Drawer open={drawerOpen} onOpenChange={setDrawerOpen}>
+              <DrawerTrigger asChild>
+                <Button variant="outline" size="sm" className="shrink-0">
+                  <SlidersHorizontal className="mr-1.5 size-4" />
+                  Filters
                   {activeFilterCount > 0 && (
-                    <Button variant="outline" className="flex-1" onClick={clearFilters}>
-                      Clear all
-                    </Button>
+                    <span className="ml-1.5 flex size-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
+                      {activeFilterCount}
+                    </span>
                   )}
-                  <DrawerClose asChild>
-                    <Button className="flex-1">
-                      Show {filteredGames.length} {tabLabel}
-                    </Button>
-                  </DrawerClose>
+                </Button>
+              </DrawerTrigger>
+              <DrawerContent>
+                <DrawerHeader>
+                  <DrawerTitle>Filters</DrawerTitle>
+                </DrawerHeader>
+                <div className="flex flex-col gap-4 overflow-y-auto px-4 pb-2">
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      id="hide-unconfirmed-mobile"
+                      checked={hideUnconfirmed}
+                      onCheckedChange={setHideUnconfirmed}
+                    />
+                    <Label htmlFor="hide-unconfirmed-mobile" className="text-sm font-medium">
+                      Hide unconfirmed
+                    </Label>
+                  </div>
+                  <div>
+                    <p className="mb-2 text-sm font-medium">
+                      {tab === "video_game" ? "Genres" : "Mechanics"}
+                    </p>
+                    <FilterChips
+                      available={availableChips}
+                      selected={selectedChips}
+                      onToggle={toggleChip}
+                    />
+                  </div>
                 </div>
-              </DrawerFooter>
-            </DrawerContent>
-          </Drawer>
+                <DrawerFooter>
+                  <div className="flex gap-2">
+                    {activeFilterCount > 0 && (
+                      <Button variant="outline" className="flex-1" onClick={clearFilters}>
+                        Clear all
+                      </Button>
+                    )}
+                    <DrawerClose asChild>
+                      <Button className="flex-1">
+                        Show {filteredGames.length} {tabLabel}
+                      </Button>
+                    </DrawerClose>
+                  </div>
+                </DrawerFooter>
+              </DrawerContent>
+            </Drawer>
+          </div>
+          {/* Row 2: Search */}
+          <div className="relative">
+            <Input
+              placeholder={`Search ${tabLabel}…`}
+              value={searchText}
+              onChange={(e) => {
+                setSearchText(e.target.value);
+                setVisibleCount(PAGE_SIZE);
+              }}
+            />
+            {semanticLoading && (
+              <Loader2 className="absolute right-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+            )}
+          </div>
         </div>
 
         {/* Recommended sort info banner */}
